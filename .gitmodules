@@ -1,0 +1,6 @@
+# Snaggletooth — the SNES library this core wraps. The gitlink commit object is the
+# authoritative pin; the core builds the library from it with add_subdirectory and links
+# snaggletooth::snaggletooth. HTTPS so that any clone, a build farm's included, needs no keys.
+[submodule "third_party/snaggletooth"]
+	path = third_party/snaggletooth
+	url = https://github.com/etroimcasso/Snaggletooth.git

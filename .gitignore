@@ -1,0 +1,21 @@
+# OS noise
+.DS_Store
+
+# Game dumps and saves stay out of the repository, everywhere in the tree.
+*.sfc
+*.smc
+*.fig
+*.swc
+*.srm
+*.state
+
+# Build trees, scratch output and editor indexes.
+build/
+build-*/
+tmp/
+.cache/
+
+# Private working docs and local tool settings, kept on this machine.
+docs-internal/
+/CLAUDE.md
+.claude/
