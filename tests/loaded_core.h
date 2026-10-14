@@ -4,6 +4,11 @@
 // exported entry point by name, so a symbol the module fails to export fails the case.
 
 #ifdef _WIN32
+// Keeps <windows.h> from defining min and max as macros, which would break std::min and
+// std::max in every file that includes this one.
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <windows.h>
 #else
 #include <dlfcn.h>
