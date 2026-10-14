@@ -22,6 +22,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <vector>
 
 namespace {
@@ -88,8 +89,30 @@ retro_core_option_v2_definition optionDefinitions[] = {
 retro_core_options_v2 coreOptions{.categories = optionCategories,
                                   .definitions = optionDefinitions};
 
-// The rate the audio machine hands its stereo frames over at.
+// The rate of the console's sound: the audio machine runs 1,024,000 cycles to a second of the
+// console's time, in both regions, and makes one stereo sample every 32 of them.
 constexpr double kSampleRate = 32000.0;
+
+// The frontend takes sound as 16-bit signed pairs, left then right, which is the layout of the
+// machine's StereoFrame, so the machine's samples are handed over as they are.
+static_assert(std::is_standard_layout_v<snaggletooth::StereoFrame>);
+static_assert(sizeof(snaggletooth::StereoFrame) == 2u * sizeof(std::int16_t));
+static_assert(offsetof(snaggletooth::StereoFrame, left) == 0u);
+static_assert(offsetof(snaggletooth::StereoFrame, right) == sizeof(std::int16_t));
+
+// Hands stereo samples to the frontend, calling again with whatever a call leaves untaken. A
+// frontend that takes none of a call's samples is not asked for the rest.
+void handOver(std::span<const snaggletooth::StereoFrame> frames) {
+  if (audioSampleBatch == nullptr) return;
+  const auto* samples = reinterpret_cast<const std::int16_t*>(frames.data());
+  std::size_t untaken = frames.size();
+  while (untaken > 0u) {
+    const std::size_t taken = std::min(audioSampleBatch(samples, untaken), untaken);
+    if (taken == 0u) return;
+    samples += taken * 2u;
+    untaken -= taken;
+  }
+}
 
 // How long a message the frontend shows on screen stays there.
 constexpr unsigned kMessageMilliseconds = 6000u;
@@ -282,7 +305,8 @@ struct Session {
 
   Screen screen;
   snaggletooth::Snes machine;
-  // Where the machine's sound is drained to each frame.
+  // Where the machine's sound is drained to each frame, in as many passes as it takes. A frame
+  // makes about 533 samples at 60 Hz and 640 at 50 Hz, so one pass is the usual case.
   std::array<snaggletooth::StereoFrame, 1024> sound{};
   // The geometry the frontend was last told.
   unsigned shownWidth = kBaseWidth;
@@ -375,7 +399,8 @@ RETRO_API void retro_reset(void) {
 // One console frame: the machine runs until the beam reaches the next frame's first line, so
 // a frame drawn a line longer, as an interlaced field is, is run whole. The frontend is handed
 // the picture that frame makes, and told the new geometry first when the picture's shape has
-// changed. A change to the interlace option takes effect from this frame.
+// changed, then the sound the frame made, every sample from the console's time up to the frame's
+// end. A change to the interlace option takes effect from this frame.
 RETRO_API void retro_run(void) {
   if (inputPoll != nullptr) inputPoll();
   if (!session) return;
@@ -390,8 +415,6 @@ RETRO_API void retro_run(void) {
   try {
     for (;;) session->machine.run(frameCycles);
   } catch (const FrameFinished&) {
-  }
-  while (session->machine.takeFrames(session->sound) == session->sound.size()) {
   }
 
   const Screen& screen = session->screen;
@@ -410,6 +433,12 @@ RETRO_API void retro_run(void) {
   if (videoRefresh != nullptr) {
     videoRefresh(screen.pixels.data(), screen.width, screen.height,
                  static_cast<std::size_t>(screen.width) * sizeof(std::uint32_t));
+  }
+
+  for (;;) {
+    const std::size_t made = session->machine.takeFrames(session->sound);
+    handOver(std::span<const snaggletooth::StereoFrame>(session->sound).first(made));
+    if (made < session->sound.size()) break;
   }
 }
 
