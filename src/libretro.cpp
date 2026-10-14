@@ -157,8 +157,10 @@ RETRO_API void retro_cheat_set(unsigned index, bool enabled, const char* code) {
 
 // Loads a cartridge from the bytes the frontend read. A copier's header ahead of the image is
 // dropped, the machine is built at the region the cartridge's header names, and a cartridge
-// whose board carries a coprocessor is refused with a message naming the chip. The frontend is
-// told the devices each port takes and the name of every button on them.
+// whose board carries a coprocessor is refused with a message naming the chip. The machine
+// draws its picture on a thread of its own beside the one the frontend calls the core on: the
+// pixels and the state are the same either way, and each thread carries less of the work. The
+// frontend is told the devices each port takes and the name of every button on them.
 RETRO_API bool retro_load_game(const struct retro_game_info* game) {
   session.reset();
   if (game == nullptr || game->data == nullptr || game->size == 0u) {
@@ -184,7 +186,7 @@ RETRO_API bool retro_load_game(const struct retro_game_info* game) {
   describeControllers();
 
   session = std::make_unique<Session>(
-      snaggletooth::SnesConfig{.rom = rom, .region = regionOf(rom)});
+      snaggletooth::SnesConfig{.rom = rom, .region = regionOf(rom), .ppuThread = true});
   session->screen.mode = interlaceOption();
   return true;
 }
