@@ -114,6 +114,91 @@ void handOver(std::span<const snaggletooth::StereoFrame> frames) {
   }
 }
 
+// The console's two controller ports and the device the frontend put in each. libretro takes a
+// RetroPad to be plugged into every port until the frontend chooses otherwise, so each starts
+// as one. A choice holds across resets and cartridges until the frontend makes another or
+// starts the core again.
+constexpr unsigned kPortCount = 2u;
+std::array<unsigned, kPortCount> portDevices{RETRO_DEVICE_JOYPAD, RETRO_DEVICE_JOYPAD};
+
+// Whether the frontend reports all of a pad's buttons in one call, as a bitmask.
+bool inputBitmasks = false;
+
+// The RetroPad button each of the console's twelve stands on. The RetroPad is laid out as the
+// console's pad, so each button is the one of the same name in the same place.
+struct PadButton {
+  unsigned id;
+  snaggletooth::Button button;
+  const char* name;
+};
+
+constexpr std::array<PadButton, snaggletooth::kButtonCount> kPadButtons{{
+    {.id = RETRO_DEVICE_ID_JOYPAD_B, .button = snaggletooth::Button::B, .name = "B"},
+    {.id = RETRO_DEVICE_ID_JOYPAD_Y, .button = snaggletooth::Button::Y, .name = "Y"},
+    {.id = RETRO_DEVICE_ID_JOYPAD_SELECT, .button = snaggletooth::Button::Select, .name = "Select"},
+    {.id = RETRO_DEVICE_ID_JOYPAD_START, .button = snaggletooth::Button::Start, .name = "Start"},
+    {.id = RETRO_DEVICE_ID_JOYPAD_UP, .button = snaggletooth::Button::Up, .name = "D-Pad Up"},
+    {.id = RETRO_DEVICE_ID_JOYPAD_DOWN, .button = snaggletooth::Button::Down, .name = "D-Pad Down"},
+    {.id = RETRO_DEVICE_ID_JOYPAD_LEFT, .button = snaggletooth::Button::Left, .name = "D-Pad Left"},
+    {.id = RETRO_DEVICE_ID_JOYPAD_RIGHT, .button = snaggletooth::Button::Right,
+     .name = "D-Pad Right"},
+    {.id = RETRO_DEVICE_ID_JOYPAD_A, .button = snaggletooth::Button::A, .name = "A"},
+    {.id = RETRO_DEVICE_ID_JOYPAD_X, .button = snaggletooth::Button::X, .name = "X"},
+    {.id = RETRO_DEVICE_ID_JOYPAD_L, .button = snaggletooth::Button::L, .name = "L"},
+    {.id = RETRO_DEVICE_ID_JOYPAD_R, .button = snaggletooth::Button::R, .name = "R"},
+}};
+
+// What each port offers in the frontend's controller menu: the console's pad, or nothing.
+constexpr retro_controller_description kPortTypes[] = {
+    {.desc = "SNES Joypad", .id = RETRO_DEVICE_JOYPAD},
+    {.desc = "None", .id = RETRO_DEVICE_NONE},
+};
+
+constexpr retro_controller_info kControllerInfo[] = {
+    {.types = kPortTypes, .num_types = std::size(kPortTypes)},
+    {.types = kPortTypes, .num_types = std::size(kPortTypes)},
+    {.types = nullptr, .num_types = 0u},
+};
+
+// The name of every button on both ports, as the frontend shows them when the player binds
+// their controls.
+const std::array<retro_input_descriptor, kPortCount * snaggletooth::kButtonCount + 1u>
+    kInputDescriptors = [] {
+      std::array<retro_input_descriptor, kPortCount * snaggletooth::kButtonCount + 1u> list{};
+      std::size_t at = 0;
+      for (unsigned port = 0; port < kPortCount; ++port) {
+        for (const PadButton& pad : kPadButtons) {
+          list[at++] = retro_input_descriptor{.port = port,
+                                              .device = RETRO_DEVICE_JOYPAD,
+                                              .index = 0u,
+                                              .id = pad.id,
+                                              .description = pad.name};
+        }
+      }
+      return list;
+    }();
+
+// What the frontend says is plugged into a port and held on it: the twelve buttons as the
+// frontend reports them, or nothing for a port whose device is not a pad. The buttons are
+// passed through as reported, so the machine sees every combination the frontend sends.
+std::optional<snaggletooth::Joypad> heldOn(unsigned port) {
+  if ((portDevices[port] & RETRO_DEVICE_MASK) != RETRO_DEVICE_JOYPAD) return std::nullopt;
+  snaggletooth::Joypad pad;
+  if (inputState == nullptr) return pad;
+  if (inputBitmasks) {
+    const auto held = static_cast<std::uint16_t>(
+        inputState(port, RETRO_DEVICE_JOYPAD, 0u, RETRO_DEVICE_ID_JOYPAD_MASK));
+    for (const PadButton& button : kPadButtons) {
+      pad.hold(button.button, ((held >> button.id) & 1u) != 0u);
+    }
+  } else {
+    for (const PadButton& button : kPadButtons) {
+      pad.hold(button.button, inputState(port, RETRO_DEVICE_JOYPAD, 0u, button.id) != 0);
+    }
+  }
+  return pad;
+}
+
 // How long a message the frontend shows on screen stays there.
 constexpr unsigned kMessageMilliseconds = 6000u;
 constexpr unsigned kMessageFrames = 360u;
@@ -354,11 +439,16 @@ RETRO_API void retro_set_audio_sample_batch(retro_audio_sample_batch_t callback)
 RETRO_API void retro_set_input_poll(retro_input_poll_t callback) { inputPoll = callback; }
 RETRO_API void retro_set_input_state(retro_input_state_t callback) { inputState = callback; }
 
+// Both ports start with a pad in them, and the frontend is asked whether it reports a pad's
+// buttons as a bitmask.
 RETRO_API void retro_init(void) {
   retro_log_callback log{};
   logPrintf = environment != nullptr && environment(RETRO_ENVIRONMENT_GET_LOG_INTERFACE, &log)
                   ? log.log
                   : nullptr;
+  portDevices.fill(RETRO_DEVICE_JOYPAD);
+  inputBitmasks =
+      environment != nullptr && environment(RETRO_ENVIRONMENT_GET_INPUT_BITMASKS, nullptr);
 }
 
 RETRO_API void retro_deinit(void) {
@@ -385,10 +475,11 @@ RETRO_API void retro_get_system_av_info(struct retro_system_av_info* info) {
   info->timing.sample_rate = kSampleRate;
 }
 
-// Every port starts empty, with no controller in it.
+// Puts a device in one of the console's two ports: the console's pad for RETRO_DEVICE_JOYPAD,
+// and an empty port for RETRO_DEVICE_NONE or any device the core does not offer. A port past
+// the second is ignored. The machine is handed the port's new contents from the next frame.
 RETRO_API void retro_set_controller_port_device(unsigned port, unsigned device) {
-  (void)port;
-  (void)device;
+  if (port < kPortCount) portDevices[port] = device;
 }
 
 // The console's reset button.
@@ -397,10 +488,11 @@ RETRO_API void retro_reset(void) {
 }
 
 // One console frame: the machine runs until the beam reaches the next frame's first line, so
-// a frame drawn a line longer, as an interlaced field is, is run whole. The frontend is handed
-// the picture that frame makes, and told the new geometry first when the picture's shape has
-// changed, then the sound the frame made, every sample from the console's time up to the frame's
-// end. A change to the interlace option takes effect from this frame.
+// a frame drawn a line longer, as an interlaced field is, is run whole. Each port holds what
+// the frontend reports for it as the frame begins, so the frame's reads of the pads see it. The
+// frontend is handed the picture that frame makes, and told the new geometry first when the
+// picture's shape has changed, then the sound the frame made, every sample from the console's
+// time up to the frame's end. A change to the interlace option takes effect from this frame.
 RETRO_API void retro_run(void) {
   if (inputPoll != nullptr) inputPoll();
   if (!session) return;
@@ -409,6 +501,8 @@ RETRO_API void retro_run(void) {
       environment(RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE, &optionsChanged) && optionsChanged) {
     session->screen.mode = interlaceOption();
   }
+  session->machine.setJoypad(snaggletooth::JoypadPort::One, heldOn(0u));
+  session->machine.setJoypad(snaggletooth::JoypadPort::Two, heldOn(1u));
 
   const std::uint64_t frameCycles =
       snaggletooth::consoleClock(session->machine.region()).masterCyclesPerFrame;
@@ -466,7 +560,8 @@ RETRO_API void retro_cheat_set(unsigned index, bool enabled, const char* code) {
 
 // Loads a cartridge from the bytes the frontend read. A copier's header ahead of the image is
 // dropped, the machine is built at the region the cartridge's header names, and a cartridge
-// whose board carries a coprocessor is refused with a message naming the chip.
+// whose board carries a coprocessor is refused with a message naming the chip. The frontend is
+// told the devices each port takes and the name of every button on them.
 RETRO_API bool retro_load_game(const struct retro_game_info* game) {
   session.reset();
   if (game == nullptr || game->data == nullptr || game->size == 0u) {
@@ -491,6 +586,11 @@ RETRO_API bool retro_load_game(const struct retro_game_info* game) {
     tellPlayer("Snaggletooth needs a frontend that shows 32-bit XRGB8888 pictures.");
     return false;
   }
+
+  environment(RETRO_ENVIRONMENT_SET_CONTROLLER_INFO,
+              const_cast<retro_controller_info*>(kControllerInfo));
+  environment(RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS,
+              const_cast<retro_input_descriptor*>(kInputDescriptors.data()));
 
   session = std::make_unique<Session>(
       snaggletooth::SnesConfig{.rom = rom, .region = regionOf(rom)});
