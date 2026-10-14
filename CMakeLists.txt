@@ -34,7 +34,14 @@ endif()
 add_subdirectory(third_party/snaggletooth EXCLUDE_FROM_ALL)
 
 add_library(snaggletooth_libretro MODULE
+  src/cartridge.cpp
+  src/controllers.cpp
+  src/frontend.cpp
   src/libretro.cpp
+  src/options.cpp
+  src/picture.cpp
+  src/session.cpp
+  src/sound.cpp
 )
 target_compile_features(snaggletooth_libretro PRIVATE cxx_std_20)
 target_compile_definitions(snaggletooth_libretro PRIVATE
