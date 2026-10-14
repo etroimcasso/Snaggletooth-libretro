@@ -10,9 +10,9 @@ save. The console's behavior is entirely the library's: what the core runs is ex
 library runs.
 
 > [!IMPORTANT]
-> **This is an early build.** Today the core builds and answers a frontend's identity queries —
-> the API version and its name. A frontend loads it once the remaining entry points are in place;
-> the table below shows what is done.
+> **This is an early build.** A frontend loads the core and a cartridge, and the core runs the
+> cartridge one console frame at a time, but it hands back no picture or sound yet, so the screen
+> stays black. The table below shows what is done.
 
 ## Contents
 
@@ -26,7 +26,7 @@ library runs.
 | Component | Status |
 |---|---|
 | Build, identity and test suite | Done |
-| Loading a cartridge and running it | Not started |
+| Loading a cartridge and running it | Done — `.sfc`, `.smc`, `.swc` and `.fig` images, with a copier's header dropped; 60 Hz or 50 Hz as the cartridge's header says; a cartridge that needs a coprocessor is refused with a message naming the chip |
 | Picture | Not started |
 | Sound | Not started |
 | Controllers | Not started |
