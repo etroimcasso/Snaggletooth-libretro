@@ -100,6 +100,7 @@ if(SNAGGLETOOTH_LIBRETRO_BUILD_TESTS)
     tests/core_identity_test.cpp
     tests/lifecycle_test.cpp
     tests/picture_test.cpp
+    tests/sound_test.cpp
   )
   target_compile_features(snaggletooth_libretro_tests PRIVATE cxx_std_20)
   set_target_properties(snaggletooth_libretro_tests PROPERTIES CXX_EXTENSIONS OFF)
