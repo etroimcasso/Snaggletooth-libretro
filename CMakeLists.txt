@@ -34,6 +34,7 @@ endif()
 add_subdirectory(third_party/snaggletooth EXCLUDE_FROM_ALL)
 
 add_library(snaggletooth_libretro MODULE
+  src/battery_save.cpp
   src/cartridge.cpp
   src/controllers.cpp
   src/frontend.cpp
@@ -109,6 +110,7 @@ if(SNAGGLETOOTH_LIBRETRO_BUILD_TESTS)
     tests/picture_test.cpp
     tests/sound_test.cpp
     tests/controllers_test.cpp
+    tests/battery_save_test.cpp
   )
   target_compile_features(snaggletooth_libretro_tests PRIVATE cxx_std_20)
   set_target_properties(snaggletooth_libretro_tests PROPERTIES CXX_EXTENSIONS OFF)

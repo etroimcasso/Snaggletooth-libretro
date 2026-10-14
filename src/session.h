@@ -1,8 +1,10 @@
 // A loaded cartridge and everything that runs it: the machine, the picture it draws into, the
-// sound it is drained into, and the picture's shape as the frontend was last told it.
+// sound it is drained into, the save the frontend keeps, and the picture's shape as the frontend
+// was last told it.
 
 #pragma once
 
+#include "battery_save.h"
 #include "picture.h"
 
 #include "snaggletooth/snes/snes.h"
@@ -18,7 +20,8 @@ struct Session {
   Session& operator=(const Session&) = delete;
 
   // Runs the machine until the beam reaches the next frame's first line, so a frame drawn a line
-  // longer, as an interlaced field is, is run whole.
+  // longer, as an interlaced field is, is run whole, then copies the machine's save into the
+  // frontend's buffer.
   void runFrame();
 
   // Hands the frontend the picture the last frame made, telling it the new geometry first when
@@ -31,6 +34,7 @@ struct Session {
 
   Screen screen;
   snaggletooth::Snes machine;
+  BatterySave save{machine};
   // Where the machine's sound is drained to each frame, in as many passes as it takes. A frame
   // makes about 533 samples at 60 Hz and 640 at 50 Hz, so one pass is the usual case.
   std::array<snaggletooth::StereoFrame, 1024> sound{};

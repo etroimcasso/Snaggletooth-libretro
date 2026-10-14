@@ -3,7 +3,8 @@
 // what the frontend hands in and what it is handed back. Each entry point passes its work to
 // the part of the core it concerns: the frontend's callbacks (frontend.h), the cartridge
 // (cartridge.h), the picture (picture.h), the sound (sound.h), the controller ports
-// (controllers.h), the core options (options.h) and the running cartridge (session.h).
+// (controllers.h), the cartridge's save (battery_save.h), the core options (options.h) and the
+// running cartridge (session.h).
 //
 // A libretro core is one per process, reached through plain functions with no handle, so the
 // running cartridge lives in this file's own state: the session a loaded cartridge runs in,
@@ -119,13 +120,16 @@ RETRO_API void retro_reset(void) {
   if (session) session->machine.reset();
 }
 
-// One console frame. Each port holds what the frontend reports for it as the frame begins, so
-// the frame's reads of the pads see it. The frontend is handed the picture that frame makes,
-// then the sound it made. A change to the interlace option takes effect from this frame.
+// One console frame. A save the frontend wrote since the last frame is in the machine as the
+// frame begins, and each port holds what the frontend reports for it, so the frame's reads of
+// the save and the pads see them. The frontend is handed the picture that frame makes, then the
+// sound it made, and its save buffer holds the save as the frame left it. A change to the
+// interlace option takes effect from this frame.
 RETRO_API void retro_run(void) {
   if (inputPoll != nullptr) inputPoll();
   if (!session) return;
   if (optionsChanged()) session->screen.mode = interlaceOption();
+  session->save.passToMachine(session->machine);
   session->machine.setJoypad(snaggletooth::JoypadPort::One, heldOn(0u));
   session->machine.setJoypad(snaggletooth::JoypadPort::Two, heldOn(1u));
   session->runFrame();
@@ -206,12 +210,15 @@ RETRO_API unsigned retro_get_region(void) {
                                                                            : RETRO_REGION_NTSC;
 }
 
+// The cartridge's save, as RETRO_MEMORY_SAVE_RAM: the buffer the frontend loads its save file
+// into after the cartridge loads and writes the file from. A cartridge without a save, or no
+// cartridge, has none, and the core offers no other memory.
 RETRO_API void* retro_get_memory_data(unsigned id) {
-  (void)id;
-  return nullptr;
+  if (id != RETRO_MEMORY_SAVE_RAM || !session) return nullptr;
+  return session->save.data();
 }
 
 RETRO_API size_t retro_get_memory_size(unsigned id) {
-  (void)id;
-  return 0;
+  if (id != RETRO_MEMORY_SAVE_RAM || !session) return 0;
+  return session->save.size();
 }
