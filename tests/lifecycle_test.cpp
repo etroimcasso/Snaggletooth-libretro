@@ -248,7 +248,7 @@ TEST(Lifecycle, EachRunIsOneFrameAndOnePoll) {
   for (unsigned at = 0; at < kRuns; ++at) core.run();
   EXPECT_EQ(seen.videoCalls, kRuns);
   EXPECT_EQ(seen.polls, kRuns);
-  EXPECT_EQ(seen.lastData, nullptr);
+  EXPECT_NE(seen.lastData, nullptr);
   EXPECT_EQ(seen.lastWidth, 256u);
   EXPECT_EQ(seen.lastHeight, 224u);
 }

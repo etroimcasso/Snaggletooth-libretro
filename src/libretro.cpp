@@ -13,6 +13,7 @@
 #include "snaggletooth/snes/snes.h"
 #include "snaggletooth/version.h"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -20,6 +21,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace {
@@ -42,12 +44,49 @@ retro_input_poll_t inputPoll = nullptr;
 retro_input_state_t inputState = nullptr;
 retro_log_printf_t logPrintf = nullptr;
 
-// The picture's largest shape: a frame drawn in half-pixels is 512 wide, and an interlaced
-// picture woven from two 239-line fields is 478 tall.
+// The picture's shapes: 256 by 224 to begin with, and at its largest 512 across, where a frame
+// is drawn in half-pixels, and 478 down, where two 239-line fields are woven into one picture.
 constexpr unsigned kBaseWidth = 256u;
 constexpr unsigned kBaseHeight = 224u;
 constexpr unsigned kMaxWidth = 512u;
 constexpr unsigned kMaxHeight = 478u;
+
+// The picture's aspect is that of square pixels 256 across, over the lines the console draws
+// (224, or 239 for the taller picture). A frame in half-pixels and a woven one keep that same
+// aspect, so the picture holds one shape on screen whatever size the frame is.
+float aspectOf(unsigned lines) {
+  return static_cast<float>(kBaseWidth) / static_cast<float>(lines);
+}
+
+// How a game's interlaced fields are shown. The machine draws one field a frame, alternating
+// parity: Weave interleaves the last two into the full-height picture the console sent, Bob
+// shows each field at full height on its own, and Off shows each field as it is drawn.
+enum class Interlace : std::uint8_t { Weave, Bob, Off };
+
+// The core's options, as the frontend lists them under Core Options.
+constexpr const char* kInterlaceKey = "snaggletooth_interlace";
+
+retro_core_option_v2_category optionCategories[] = {
+    {.key = "video", .desc = "Video", .info = "How the console's picture is shown."},
+    {},
+};
+
+retro_core_option_v2_definition optionDefinitions[] = {
+    {.key = kInterlaceKey,
+     .desc = "Interlaced Picture",
+     .desc_categorized = "Interlaced Picture",
+     .info = "How a game that draws an interlaced picture is shown. Weave interleaves its two "
+             "fields into the full-height picture the console sent; Bob shows each field at full "
+             "height on its own; Off shows each field as it is drawn, at half height.",
+     .info_categorized = nullptr,
+     .category_key = "video",
+     .values = {{"weave", "Weave"}, {"bob", "Bob"}, {"off", "Off"}, {nullptr, nullptr}},
+     .default_value = "weave"},
+    {},
+};
+
+retro_core_options_v2 coreOptions{.categories = optionCategories,
+                                  .definitions = optionDefinitions};
 
 // The rate the audio machine hands its stereo frames over at.
 constexpr double kSampleRate = 32000.0;
@@ -79,6 +118,71 @@ void tellPlayer(const std::string& text) {
   }
 }
 
+// Lists the core's options with the frontend in the newest form it takes: definitions grouped
+// into categories (version 2), plain definitions (version 1), or, for any frontend, one
+// "Description; value|value" line for each option, its default value first.
+void registerOptions() {
+  unsigned version = 0;
+  if (!environment(RETRO_ENVIRONMENT_GET_CORE_OPTIONS_VERSION, &version)) version = 0;
+  if (version >= 2u) {
+    environment(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2, &coreOptions);
+    return;
+  }
+  if (version >= 1u) {
+    static std::vector<retro_core_option_definition> plain = [] {
+      std::vector<retro_core_option_definition> definitions;
+      for (const auto* option = optionDefinitions; option->key != nullptr; ++option) {
+        retro_core_option_definition definition{.key = option->key,
+                                                .desc = option->desc,
+                                                .info = option->info,
+                                                .values = {},
+                                                .default_value = option->default_value};
+        std::copy(std::begin(option->values), std::end(option->values),
+                  std::begin(definition.values));
+        definitions.push_back(definition);
+      }
+      definitions.push_back(retro_core_option_definition{});
+      return definitions;
+    }();
+    environment(RETRO_ENVIRONMENT_SET_CORE_OPTIONS, plain.data());
+    return;
+  }
+  static const std::vector<std::string> lines = [] {
+    std::vector<std::string> text;
+    for (const auto* option = optionDefinitions; option->key != nullptr; ++option) {
+      std::string line = std::string(option->desc) + "; " + option->default_value;
+      for (const auto* value = option->values; value->value != nullptr; ++value) {
+        if (std::string_view(value->value) == option->default_value) continue;
+        line += std::string("|") + value->value;
+      }
+      text.push_back(std::move(line));
+    }
+    return text;
+  }();
+  static std::vector<retro_variable> variables = [] {
+    std::vector<retro_variable> list;
+    for (std::size_t at = 0; at < lines.size(); ++at) {
+      list.push_back(retro_variable{.key = optionDefinitions[at].key, .value = lines[at].c_str()});
+    }
+    list.push_back(retro_variable{.key = nullptr, .value = nullptr});
+    return list;
+  }();
+  environment(RETRO_ENVIRONMENT_SET_VARIABLES, variables.data());
+}
+
+// The interlace presentation the player chose, or Weave where the frontend has no choice for it.
+Interlace interlaceOption() {
+  retro_variable variable{.key = kInterlaceKey, .value = nullptr};
+  if (environment == nullptr || !environment(RETRO_ENVIRONMENT_GET_VARIABLE, &variable) ||
+      variable.value == nullptr) {
+    return Interlace::Weave;
+  }
+  const std::string_view value = variable.value;
+  if (value == "bob") return Interlace::Bob;
+  if (value == "off") return Interlace::Off;
+  return Interlace::Weave;
+}
+
 // The chip a cartridge's header names, as a player would know it.
 const char* chipName(snaggletooth::Coprocessor chip) {
   using snaggletooth::Coprocessor;
@@ -105,32 +209,85 @@ const char* chipName(snaggletooth::Coprocessor chip) {
 // frame ends; the next run() spends the rest of the interrupted budget before its own.
 struct FrameFinished {};
 
-// The machine's frame observer: it notes the finished frame's shape and stops the run there.
-class FrameEnd final : public snaggletooth::FrameObserver {
+// The machine's frame observer. It turns each finished frame into the picture the frontend is
+// handed, then stops the run there. The picture is XRGB8888, one 32-bit 0x00RRGGBB word a
+// pixel, row-major from the top line, in a buffer sized once for the largest picture, so no
+// frame allocates. A frame the cartridge did not interlace, or any frame under Off, is the
+// picture as drawn. A field of an interlaced run is placed in the full-height picture at the
+// rows of its parity, line i at row 2i + parity: under Weave the other parity's rows keep the
+// last field of that parity, and under Bob this field fills them too. A picture of a new shape
+// starts black.
+class Screen final : public snaggletooth::FrameObserver {
  public:
-  void frame(const snaggletooth::VideoFrame& picture) override {
-    width = picture.width;
-    height = picture.height;
+  void frame(const snaggletooth::VideoFrame& field) override {
+    const bool interlaced = machine != nullptr && machine->state().ppu.interlace();
+    lines = field.height;
+    if (!interlaced || mode == Interlace::Off) {
+      width = field.width;
+      height = field.height;
+      for (unsigned line = 0; line < field.height; ++line) convertLine(field, line, line);
+    } else {
+      const unsigned tall = field.height * 2u;
+      if (field.width != width || tall != height) {
+        width = field.width;
+        height = tall;
+        std::fill_n(pixels.begin(), static_cast<std::size_t>(width) * height, 0u);
+      }
+      const unsigned parity = field.field & 1u;
+      for (unsigned line = 0; line < field.height; ++line) {
+        convertLine(field, line, 2u * line + parity);
+        if (mode == Interlace::Bob) {
+          std::copy_n(rowAt(2u * line + parity), width, rowAt(2u * line + (parity ^ 1u)));
+        }
+      }
+    }
     throw FrameFinished{};
   }
 
+  // The machine whose PPU says whether the run is interlaced.
+  const snaggletooth::Snes* machine = nullptr;
+  Interlace mode = Interlace::Weave;
+
+  std::vector<std::uint32_t> pixels = std::vector<std::uint32_t>(
+      static_cast<std::size_t>(kMaxWidth) * kMaxHeight, 0u);
   unsigned width = kBaseWidth;
   unsigned height = kBaseHeight;
+  unsigned lines = kBaseHeight;  // the lines the console drew the last frame with
+
+ private:
+  [[nodiscard]] std::uint32_t* rowAt(unsigned row) {
+    return pixels.data() + static_cast<std::size_t>(row) * width;
+  }
+
+  void convertLine(const snaggletooth::VideoFrame& field, unsigned line, unsigned row) {
+    const std::uint8_t* from =
+        field.pixels.data() + static_cast<std::size_t>(line) * field.width * 4u;
+    std::uint32_t* to = rowAt(row);
+    for (unsigned x = 0; x < field.width; ++x, from += 4) {
+      to[x] = (static_cast<std::uint32_t>(from[0]) << 16) |
+              (static_cast<std::uint32_t>(from[1]) << 8) | static_cast<std::uint32_t>(from[2]);
+    }
+  }
 };
 
 // A loaded cartridge and everything that runs it. The machine keeps a pointer to the
 // observer, so a session is built in place and never moved.
 struct Session {
   explicit Session(const snaggletooth::SnesConfig& config) : machine(config) {
-    machine.setFrameObserver(&frameEnd);
+    screen.machine = &machine;
+    machine.setFrameObserver(&screen);
   }
   Session(const Session&) = delete;
   Session& operator=(const Session&) = delete;
 
-  FrameEnd frameEnd;
+  Screen screen;
   snaggletooth::Snes machine;
   // Where the machine's sound is drained to each frame.
   std::array<snaggletooth::StereoFrame, 1024> sound{};
+  // The geometry the frontend was last told.
+  unsigned shownWidth = kBaseWidth;
+  unsigned shownHeight = kBaseHeight;
+  unsigned shownLines = kBaseHeight;
 };
 
 std::unique_ptr<Session> session;
@@ -157,10 +314,12 @@ RETRO_API void retro_get_system_info(struct retro_system_info* info) {
 }
 
 // The core runs a cartridge and nothing else, so a frontend never starts it without content.
+// The core's options are listed here, before anything loads.
 RETRO_API void retro_set_environment(retro_environment_t callback) {
   environment = callback;
   bool noGame = false;
   environment(RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME, &noGame);
+  registerOptions();
 }
 
 RETRO_API void retro_set_video_refresh(retro_video_refresh_t callback) { videoRefresh = callback; }
@@ -183,18 +342,19 @@ RETRO_API void retro_deinit(void) {
   logPrintf = nullptr;
 }
 
-// The timing is the console's own: its master clock over the master cycles of a frame, which
-// is not a whole number of frames a second.
+// The geometry is the picture's shape as the frontend was last told it. The timing is the
+// console's own: its master clock over the master cycles of a frame, which is not a whole
+// number of frames a second.
 RETRO_API void retro_get_system_av_info(struct retro_system_av_info* info) {
   const snaggletooth::Region region =
       session ? session->machine.region() : snaggletooth::Region::Ntsc;
   const snaggletooth::ConsoleClock clock = snaggletooth::consoleClock(region);
   *info = retro_system_av_info{};
-  info->geometry.base_width = kBaseWidth;
-  info->geometry.base_height = kBaseHeight;
+  info->geometry.base_width = session ? session->shownWidth : kBaseWidth;
+  info->geometry.base_height = session ? session->shownHeight : kBaseHeight;
   info->geometry.max_width = kMaxWidth;
   info->geometry.max_height = kMaxHeight;
-  info->geometry.aspect_ratio = 0.0f;
+  info->geometry.aspect_ratio = aspectOf(session ? session->shownLines : kBaseHeight);
   info->timing.fps = static_cast<double>(clock.hertzNumerator) /
                      (static_cast<double>(clock.hertzDenominator) *
                       static_cast<double>(clock.masterCyclesPerFrame));
@@ -213,11 +373,18 @@ RETRO_API void retro_reset(void) {
 }
 
 // One console frame: the machine runs until the beam reaches the next frame's first line, so
-// a frame drawn a line longer, as an interlaced field is, is run whole. The frame is reported
-// to the frontend as a repeat of the last one shown, at the shape the machine drew it.
+// a frame drawn a line longer, as an interlaced field is, is run whole. The frontend is handed
+// the picture that frame makes, and told the new geometry first when the picture's shape has
+// changed. A change to the interlace option takes effect from this frame.
 RETRO_API void retro_run(void) {
   if (inputPoll != nullptr) inputPoll();
   if (!session) return;
+  bool optionsChanged = false;
+  if (environment != nullptr &&
+      environment(RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE, &optionsChanged) && optionsChanged) {
+    session->screen.mode = interlaceOption();
+  }
+
   const std::uint64_t frameCycles =
       snaggletooth::consoleClock(session->machine.region()).masterCyclesPerFrame;
   try {
@@ -226,8 +393,23 @@ RETRO_API void retro_run(void) {
   }
   while (session->machine.takeFrames(session->sound) == session->sound.size()) {
   }
+
+  const Screen& screen = session->screen;
+  if (screen.width != session->shownWidth || screen.height != session->shownHeight ||
+      screen.lines != session->shownLines) {
+    session->shownWidth = screen.width;
+    session->shownHeight = screen.height;
+    session->shownLines = screen.lines;
+    retro_game_geometry geometry{.base_width = screen.width,
+                                 .base_height = screen.height,
+                                 .max_width = kMaxWidth,
+                                 .max_height = kMaxHeight,
+                                 .aspect_ratio = aspectOf(screen.lines)};
+    if (environment != nullptr) environment(RETRO_ENVIRONMENT_SET_GEOMETRY, &geometry);
+  }
   if (videoRefresh != nullptr) {
-    videoRefresh(nullptr, session->frameEnd.width, session->frameEnd.height, 0);
+    videoRefresh(screen.pixels.data(), screen.width, screen.height,
+                 static_cast<std::size_t>(screen.width) * sizeof(std::uint32_t));
   }
 }
 
@@ -283,6 +465,7 @@ RETRO_API bool retro_load_game(const struct retro_game_info* game) {
 
   session = std::make_unique<Session>(
       snaggletooth::SnesConfig{.rom = rom, .region = regionOf(rom)});
+  session->screen.mode = interlaceOption();
   return true;
 }
 
