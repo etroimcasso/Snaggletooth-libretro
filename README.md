@@ -10,9 +10,9 @@ save. The console's behavior is entirely the library's: what the core runs is ex
 library runs.
 
 > [!IMPORTANT]
-> **This is an early build.** A frontend loads the core and a cartridge, and the core runs the
-> cartridge one console frame at a time, but it hands back no picture or sound yet, so the screen
-> stays black. The table below shows what is done.
+> **This is an early build.** A frontend loads the core and a cartridge and shows the picture the
+> cartridge draws, one console frame at a time. Sound and controllers come next, so a game plays
+> silently and takes no input yet. The table below shows what is done.
 
 ## Contents
 
@@ -27,11 +27,11 @@ library runs.
 |---|---|
 | Build, identity and test suite | Done |
 | Loading a cartridge and running it | Done — `.sfc`, `.smc`, `.swc` and `.fig` images, with a copier's header dropped; 60 Hz or 50 Hz as the cartridge's header says; a cartridge that needs a coprocessor is refused with a message naming the chip |
-| Picture | Not started |
+| Picture | Done — every frame the console draws, 256 or 512 pixels across and 224 or 239 lines, in 32-bit color; interlaced games woven into the full-height picture, or shown field by field (Bob, Off) from the core options; square pixels, 8:7 at 224 lines, whatever the frame's size |
 | Sound | Not started |
 | Controllers | Not started |
 | Battery saves and save states | Not started |
-| Core options | Not started |
+| Core options | In progress — Video › Interlaced Picture: Weave, Bob or Off |
 | Releases | Not started |
 | Official libretro core | Not started |
 

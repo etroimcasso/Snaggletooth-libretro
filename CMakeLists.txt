@@ -94,10 +94,12 @@ if(SNAGGLETOOTH_LIBRETRO_BUILD_TESTS)
   # The suite drives the built core the way a frontend does: it loads the module at run time
   # and calls the entry points it exports, so every case runs against the shipped binary.
   # The cartridges the cases load are Snaggletooth's hand-built examples, header-only images
-  # under its tools tree; only the suite includes them.
+  # under its tools tree, and images the suite builds on the same helpers; only the suite
+  # includes them.
   add_executable(snaggletooth_libretro_tests
     tests/core_identity_test.cpp
     tests/lifecycle_test.cpp
+    tests/picture_test.cpp
   )
   target_compile_features(snaggletooth_libretro_tests PRIVATE cxx_std_20)
   set_target_properties(snaggletooth_libretro_tests PROPERTIES CXX_EXTENSIONS OFF)
