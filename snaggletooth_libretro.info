@@ -1,0 +1,33 @@
+# Software Information
+display_name = "Nintendo - SNES / SFC (Snaggletooth)"
+categories = "Emulator"
+authors = "Eric Tomasso"
+corename = "Snaggletooth"
+supported_extensions = "sfc|smc|swc|fig"
+license = "MIT"
+permissions = ""
+display_version = "0.0.1"
+
+# Hardware Information
+manufacturer = "Nintendo"
+systemname = "Super Nintendo Entertainment System"
+systemid = "super_nes"
+notes = "(!) A cartridge whose board carries a coprocessor (SuperFX, SA-1, DSP, S-DD1, SPC7110, CX4 and others) is refused with a message naming the chip."
+
+# Libretro Features
+savestate = "false"
+cheats = "true"
+input_descriptors = "true"
+memory_descriptors = "true"
+libretro_saves = "true"
+core_options = "true"
+core_options_version = "2.0"
+load_subsystem = "false"
+supports_no_game = "false"
+single_purpose = "false"
+database = "Nintendo - Super Nintendo Entertainment System"
+hw_render = "false"
+needs_fullpath = "false"
+disk_control = "false"
+is_experimental = "true"
+description = "Snaggletooth, a clean-room, MIT-licensed implementation of the Super Nintendo Entertainment System. The core hands the frontend every frame the console draws, its stereo sound at 32 kHz, two controller ports and the cartridge's battery save, and offers core options for the picture's aspect, interlaced pictures, the console's region and the threads the console runs on, Game Genie, Pro Action Replay and raw cheat codes, and a memory map for achievements."
