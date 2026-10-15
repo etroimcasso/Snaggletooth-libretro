@@ -21,6 +21,7 @@ void Session::runFrame() {
     for (;;) machine.run(frameCycles);
   } catch (const FrameFinished&) {
   }
+  save.copyFromMachine(machine);
 }
 
 void Session::showPicture() {

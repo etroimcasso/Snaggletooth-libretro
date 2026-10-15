@@ -12,8 +12,8 @@ library runs.
 > [!IMPORTANT]
 > **This is an early build.** A frontend loads the core and a cartridge, shows the picture the
 > cartridge draws, plays its sound and passes it the two players' controllers, one console frame
-> at a time. Battery saves come next, so a game's save lasts only while it runs. The table below
-> shows what is done.
+> at a time, and a game's battery-backed save is kept in the frontend's save file. Save states
+> come next. The table below shows what is done.
 
 ## Contents
 
@@ -31,7 +31,8 @@ library runs.
 | Picture | Done — every frame the console draws, 256 or 512 pixels across and 224 or 239 lines, in 32-bit color; interlaced games woven into the full-height picture, or shown field by field (Bob, Off) from the core options; square pixels, 8:7 at 224 lines, whatever the frame's size |
 | Sound | Done — the console's stereo sound at its own rate, 32,000 samples a second, handed to the frontend with every frame; the frontend resamples it for the output device |
 | Controllers | Done — two ports, each holding the console's standard pad (SNES Joypad) or nothing (None), chosen from the frontend's controller menu; all twelve buttons named for binding, and passed to the console as the frontend reports them |
-| Battery saves and save states | Not started |
+| Battery saves | Done — a cartridge's save RAM, as large as its header declares, handed to the frontend to keep in its save file and loaded from it when the cartridge starts; the frontend's copy holds the save as each frame leaves it |
+| Save states | Not started |
 | Core options | In progress — Video › Interlaced Picture: Weave, Bob or Off |
 | Releases | Not started |
 | Official libretro core | Not started |
