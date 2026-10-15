@@ -4,8 +4,8 @@
 // the part of the core it concerns: the frontend's callbacks (frontend.h), the cartridge
 // (cartridge.h), the picture (picture.h), the sound (sound.h), the controller ports
 // (controllers.h), the cartridge's save (battery_save.h), the console's work RAM (work_ram.h)
-// and the map placing both on the bus (memory_map.h), the core options (options.h) and the
-// running cartridge (session.h).
+// and the map placing both on the bus (memory_map.h), the player's cheat codes (cheats.h), the
+// core options (options.h) and the running cartridge (session.h).
 //
 // A libretro core is one per process, reached through plain functions with no handle, so the
 // running cartridge lives in this file's own state: the session a loaded cartridge runs in,
@@ -14,6 +14,7 @@
 #include <libretro.h>
 
 #include "cartridge.h"
+#include "cheats.h"
 #include "controllers.h"
 #include "frontend.h"
 #include "options.h"
@@ -90,6 +91,7 @@ RETRO_API void retro_init(void) {
 
 RETRO_API void retro_deinit(void) {
   session.reset();
+  forgetCheats();
   logPrintf = nullptr;
 }
 
@@ -125,21 +127,27 @@ RETRO_API void retro_reset(void) {
 }
 
 // One console frame. A save or work RAM the frontend wrote since the last frame is in the
-// machine as the frame begins, and each port holds what the frontend reports for it, so the
-// frame's reads of the save, the work RAM and the pads see them. The frontend is handed the
-// picture that frame makes, then the sound it made, and its save and work-RAM buffers hold both
-// as the frame left them. A change to the interlace, aspect or thread options takes effect from
-// this frame.
+// machine as the frame begins, then the byte of every every-frame cheat that is on, and each
+// port holds what the frontend reports for it, so the frame's reads of the save, the work RAM
+// and the pads see them. The frontend is handed the picture that frame makes, then the sound it
+// made, and its save and work-RAM buffers hold both as the frame left them. A change to the
+// interlace, aspect or thread options takes effect from this frame; a machine rebuilt on other
+// threads is given the ROM patches of the cheats that are on.
 RETRO_API void retro_run(void) {
   if (inputPoll != nullptr) inputPoll();
   if (!session) return;
   if (optionsChanged()) {
     session->screen.mode = interlaceOption();
     session->aspect = aspectOption();
-    session->runOn(threadsOption());
+    const MachineThreads threads = threadsOption();
+    const bool rebuilt = threads != MachineThreads{.audio = session->config.apuThread,
+                                                   .picture = session->config.ppuThread};
+    session->runOn(threads);
+    if (rebuilt) patchRom(*session->machine);
   }
   session->save.passToMachine(*session->machine);
   session->workRam.passToMachine(*session->machine);
+  applyCheats(*session->machine);
   session->machine->setJoypad(snaggletooth::JoypadPort::One, heldOn(0u));
   session->machine->setJoypad(snaggletooth::JoypadPort::Two, heldOn(1u));
   session->runFrame();
@@ -161,12 +169,17 @@ RETRO_API bool retro_unserialize(const void* data, size_t size) {
   return false;
 }
 
-RETRO_API void retro_cheat_reset(void) {}
+// Turns every cheat off: the cartridge's ROM gets back each byte a Game Genie code replaced.
+RETRO_API void retro_cheat_reset(void) { resetCheats(session ? session->machine.get() : nullptr); }
 
+// One cheat code, as the player entered it: a Game Genie code, `XXYY-ZZZZ`, patching the
+// cartridge's ROM at once and put back when it is turned off; or a Pro Action Replay code,
+// `AAAAAAVV`, or a raw one, `AAAAAA:VV`, writing its byte before every frame from the next. A
+// code set before a cartridge loads takes effect when it loads. A code in no such form, or
+// naming an address with no memory behind it, or a Game Genie code outside the cartridge's ROM,
+// is refused with a message.
 RETRO_API void retro_cheat_set(unsigned index, bool enabled, const char* code) {
-  (void)index;
-  (void)enabled;
-  (void)code;
+  setCheat(index, enabled, code, session ? session->machine.get() : nullptr);
 }
 
 // Loads a cartridge from the bytes the frontend read. A copier's header ahead of the image is
@@ -174,7 +187,8 @@ RETRO_API void retro_cheat_set(unsigned index, bool enabled, const char* code) {
 // the cartridge's header names, and a cartridge whose board carries a coprocessor is refused
 // with a message naming the chip. The machine runs its sound and its picture on the threads the
 // thread options choose. The frontend is told the devices each port takes and the name of every
-// button on them, and where the work RAM and the save sit on the console's bus.
+// button on them, and where the work RAM and the save sit on the console's bus. The cheats set
+// so far take effect on the new machine.
 RETRO_API bool retro_load_game(const struct retro_game_info* game) {
   session.reset();
   if (game == nullptr || game->data == nullptr || game->size == 0u) {
@@ -205,6 +219,7 @@ RETRO_API bool retro_load_game(const struct retro_game_info* game) {
   session->aspect = aspectOption();
   session->shownAspect = session->aspect;
   session->memoryMap.tell();
+  patchRom(*session->machine);
   return true;
 }
 
@@ -216,7 +231,11 @@ RETRO_API bool retro_load_game_special(unsigned type, const struct retro_game_in
   return false;
 }
 
-RETRO_API void retro_unload_game(void) { session.reset(); }
+// The cartridge goes, and the cheats set on it with it.
+RETRO_API void retro_unload_game(void) {
+  session.reset();
+  forgetCheats();
+}
 
 RETRO_API unsigned retro_get_region(void) {
   return session && session->machine->region() == snaggletooth::Region::Pal ? RETRO_REGION_PAL
