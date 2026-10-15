@@ -1,7 +1,8 @@
 // The picture as a frontend receives it: every frame the machine draws, in XRGB8888, at the
 // shape it was drawn (256 or 512 across, 224 or 239 lines, interlaced fields woven, bobbed or
 // passed through as the interlace option asks), with the geometry sent as the shape changes and
-// the aspect of square pixels. The interlace option is listed in every form a frontend takes.
+// the aspect of square pixels. The interlace option is among the options listed in every form a
+// frontend takes.
 //
 // What each frame should hold comes from a second machine run here, with an observer of the
 // suite's own: its fields, converted and composed as the pixel format and the interlace modes
@@ -578,13 +579,18 @@ TEST(Picture, AnOptionChangeTakesEffectOnTheNextRun) {
   EXPECT_EQ(blackRows, 224u);
 }
 
+// Whether a listing holds an entry. The interlace option is one row of the core's options; the
+// whole listing is pinned in options_test.cpp.
+bool lists(const std::vector<std::string>& listing, const std::string& entry) {
+  return std::find(listing.begin(), listing.end(), entry) != listing.end();
+}
+
 TEST(Picture, TheInterlaceOptionIsListedInCategories) {
   Frontend seen;
   Core core(seen);
   ASSERT_TRUE(core.loaded());
-  EXPECT_EQ(seen.v2Categories, std::vector<std::string>{"video|Video"});
-  EXPECT_EQ(seen.v2Options,
-            std::vector<std::string>{"snaggletooth_interlace|video|weave|weave,bob,off"});
+  EXPECT_TRUE(lists(seen.v2Categories, "video|Video"));
+  EXPECT_TRUE(lists(seen.v2Options, "snaggletooth_interlace|video|weave|weave,bob,off"));
   EXPECT_TRUE(seen.v1Options.empty());
   EXPECT_TRUE(seen.v0Options.empty());
 }
@@ -594,7 +600,7 @@ TEST(Picture, AFirstVersionFrontendIsListedThePlainOption) {
   seen.optionsVersion = 1u;
   Core core(seen);
   ASSERT_TRUE(core.loaded());
-  EXPECT_EQ(seen.v1Options, std::vector<std::string>{"snaggletooth_interlace|weave|weave,bob,off"});
+  EXPECT_TRUE(lists(seen.v1Options, "snaggletooth_interlace|weave|weave,bob,off"));
   EXPECT_TRUE(seen.v2Options.empty());
   EXPECT_TRUE(seen.v0Options.empty());
 }
@@ -604,8 +610,7 @@ TEST(Picture, AFrontendWithoutOptionVersionsIsListedTheVariable) {
   seen.optionsVersion = 0u;
   Core core(seen);
   ASSERT_TRUE(core.loaded());
-  EXPECT_EQ(seen.v0Options,
-            std::vector<std::string>{"snaggletooth_interlace|Interlaced Picture; weave|bob|off"});
+  EXPECT_TRUE(lists(seen.v0Options, "snaggletooth_interlace|Interlaced Picture; weave|bob|off"));
   EXPECT_TRUE(seen.v2Options.empty());
   EXPECT_TRUE(seen.v1Options.empty());
 }

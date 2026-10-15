@@ -29,6 +29,7 @@
 #include <memory>
 #include <span>
 #include <string>
+#include <utility>
 #include <vector>
 
 using namespace snaggletooth_libretro;
@@ -91,19 +92,21 @@ RETRO_API void retro_deinit(void) {
   logPrintf = nullptr;
 }
 
-// The geometry is the picture's shape as the frontend was last told it. The timing is the
-// console's own: its master clock over the master cycles of a frame, which is not a whole
-// number of frames a second.
+// The geometry is the picture's shape as the frontend was last told it, at the aspect the player
+// chose. The timing is the console's own: its master clock over the master cycles of a frame,
+// which is not a whole number of frames a second.
 RETRO_API void retro_get_system_av_info(struct retro_system_av_info* info) {
   const snaggletooth::Region region =
-      session ? session->machine.region() : snaggletooth::Region::Ntsc;
+      session ? session->machine->region() : snaggletooth::Region::Ntsc;
   const snaggletooth::ConsoleClock clock = snaggletooth::consoleClock(region);
   *info = retro_system_av_info{};
   info->geometry.base_width = session ? session->shownWidth : kBaseWidth;
   info->geometry.base_height = session ? session->shownHeight : kBaseHeight;
   info->geometry.max_width = kMaxWidth;
   info->geometry.max_height = kMaxHeight;
-  info->geometry.aspect_ratio = aspectOf(session ? session->shownLines : kBaseHeight);
+  info->geometry.aspect_ratio =
+      session ? aspectOf(session->shownLines, session->shownAspect)
+              : aspectOf(kBaseHeight, aspectOption());
   info->timing.fps = static_cast<double>(clock.hertzNumerator) /
                      (static_cast<double>(clock.hertzDenominator) *
                       static_cast<double>(clock.masterCyclesPerFrame));
@@ -117,21 +120,25 @@ RETRO_API void retro_set_controller_port_device(unsigned port, unsigned device) 
 
 // The console's reset button.
 RETRO_API void retro_reset(void) {
-  if (session) session->machine.reset();
+  if (session) session->machine->reset();
 }
 
 // One console frame. A save the frontend wrote since the last frame is in the machine as the
 // frame begins, and each port holds what the frontend reports for it, so the frame's reads of
 // the save and the pads see them. The frontend is handed the picture that frame makes, then the
 // sound it made, and its save buffer holds the save as the frame left it. A change to the
-// interlace option takes effect from this frame.
+// interlace, aspect or thread options takes effect from this frame.
 RETRO_API void retro_run(void) {
   if (inputPoll != nullptr) inputPoll();
   if (!session) return;
-  if (optionsChanged()) session->screen.mode = interlaceOption();
-  session->save.passToMachine(session->machine);
-  session->machine.setJoypad(snaggletooth::JoypadPort::One, heldOn(0u));
-  session->machine.setJoypad(snaggletooth::JoypadPort::Two, heldOn(1u));
+  if (optionsChanged()) {
+    session->screen.mode = interlaceOption();
+    session->aspect = aspectOption();
+    session->runOn(threadsOption());
+  }
+  session->save.passToMachine(*session->machine);
+  session->machine->setJoypad(snaggletooth::JoypadPort::One, heldOn(0u));
+  session->machine->setJoypad(snaggletooth::JoypadPort::Two, heldOn(1u));
   session->runFrame();
   session->showPicture();
   session->playSound();
@@ -160,11 +167,11 @@ RETRO_API void retro_cheat_set(unsigned index, bool enabled, const char* code) {
 }
 
 // Loads a cartridge from the bytes the frontend read. A copier's header ahead of the image is
-// dropped, the machine is built at the region the cartridge's header names, and a cartridge
-// whose board carries a coprocessor is refused with a message naming the chip. The machine
-// draws its picture on a thread of its own beside the one the frontend calls the core on: the
-// pixels and the state are the same either way, and each thread carries less of the work. The
-// frontend is told the devices each port takes and the name of every button on them.
+// dropped, the machine is built at the region the Region option names, or under Auto the one
+// the cartridge's header names, and a cartridge whose board carries a coprocessor is refused
+// with a message naming the chip. The machine runs its sound and its picture on the threads the
+// thread options choose. The frontend is told the devices each port takes and the name of every
+// button on them.
 RETRO_API bool retro_load_game(const struct retro_game_info* game) {
   session.reset();
   if (game == nullptr || game->data == nullptr || game->size == 0u) {
@@ -189,9 +196,11 @@ RETRO_API bool retro_load_game(const struct retro_game_info* game) {
 
   describeControllers();
 
-  session = std::make_unique<Session>(
-      snaggletooth::SnesConfig{.rom = rom, .region = regionOf(rom), .ppuThread = true});
+  const snaggletooth::Region region = regionOption().value_or(regionOf(rom));
+  session = std::make_unique<Session>(std::move(rom), region, threadsOption());
   session->screen.mode = interlaceOption();
+  session->aspect = aspectOption();
+  session->shownAspect = session->aspect;
   return true;
 }
 
@@ -206,7 +215,7 @@ RETRO_API bool retro_load_game_special(unsigned type, const struct retro_game_in
 RETRO_API void retro_unload_game(void) { session.reset(); }
 
 RETRO_API unsigned retro_get_region(void) {
-  return session && session->machine.region() == snaggletooth::Region::Pal ? RETRO_REGION_PAL
+  return session && session->machine->region() == snaggletooth::Region::Pal ? RETRO_REGION_PAL
                                                                            : RETRO_REGION_NTSC;
 }
 
