@@ -3,7 +3,8 @@
 // what the frontend hands in and what it is handed back. Each entry point passes its work to
 // the part of the core it concerns: the frontend's callbacks (frontend.h), the cartridge
 // (cartridge.h), the picture (picture.h), the sound (sound.h), the controller ports
-// (controllers.h), the cartridge's save (battery_save.h), the core options (options.h) and the
+// (controllers.h), the cartridge's save (battery_save.h), the console's work RAM (work_ram.h)
+// and the map placing both on the bus (memory_map.h), the core options (options.h) and the
 // running cartridge (session.h).
 //
 // A libretro core is one per process, reached through plain functions with no handle, so the
@@ -123,11 +124,12 @@ RETRO_API void retro_reset(void) {
   if (session) session->machine->reset();
 }
 
-// One console frame. A save the frontend wrote since the last frame is in the machine as the
-// frame begins, and each port holds what the frontend reports for it, so the frame's reads of
-// the save and the pads see them. The frontend is handed the picture that frame makes, then the
-// sound it made, and its save buffer holds the save as the frame left it. A change to the
-// interlace, aspect or thread options takes effect from this frame.
+// One console frame. A save or work RAM the frontend wrote since the last frame is in the
+// machine as the frame begins, and each port holds what the frontend reports for it, so the
+// frame's reads of the save, the work RAM and the pads see them. The frontend is handed the
+// picture that frame makes, then the sound it made, and its save and work-RAM buffers hold both
+// as the frame left them. A change to the interlace, aspect or thread options takes effect from
+// this frame.
 RETRO_API void retro_run(void) {
   if (inputPoll != nullptr) inputPoll();
   if (!session) return;
@@ -137,6 +139,7 @@ RETRO_API void retro_run(void) {
     session->runOn(threadsOption());
   }
   session->save.passToMachine(*session->machine);
+  session->workRam.passToMachine(*session->machine);
   session->machine->setJoypad(snaggletooth::JoypadPort::One, heldOn(0u));
   session->machine->setJoypad(snaggletooth::JoypadPort::Two, heldOn(1u));
   session->runFrame();
@@ -171,7 +174,7 @@ RETRO_API void retro_cheat_set(unsigned index, bool enabled, const char* code) {
 // the cartridge's header names, and a cartridge whose board carries a coprocessor is refused
 // with a message naming the chip. The machine runs its sound and its picture on the threads the
 // thread options choose. The frontend is told the devices each port takes and the name of every
-// button on them.
+// button on them, and where the work RAM and the save sit on the console's bus.
 RETRO_API bool retro_load_game(const struct retro_game_info* game) {
   session.reset();
   if (game == nullptr || game->data == nullptr || game->size == 0u) {
@@ -201,6 +204,7 @@ RETRO_API bool retro_load_game(const struct retro_game_info* game) {
   session->screen.mode = interlaceOption();
   session->aspect = aspectOption();
   session->shownAspect = session->aspect;
+  session->memoryMap.tell();
   return true;
 }
 
@@ -220,14 +224,24 @@ RETRO_API unsigned retro_get_region(void) {
 }
 
 // The cartridge's save, as RETRO_MEMORY_SAVE_RAM: the buffer the frontend loads its save file
-// into after the cartridge loads and writes the file from. A cartridge without a save, or no
-// cartridge, has none, and the core offers no other memory.
+// into after the cartridge loads and writes the file from. The console's work RAM, as
+// RETRO_MEMORY_SYSTEM_RAM: the 128 KB the frontend reads for achievements and its cheat search.
+// A cartridge without a save has none; with no cartridge there is no memory; and the core
+// offers no other.
 RETRO_API void* retro_get_memory_data(unsigned id) {
-  if (id != RETRO_MEMORY_SAVE_RAM || !session) return nullptr;
-  return session->save.data();
+  if (!session) return nullptr;
+  switch (id) {
+    case RETRO_MEMORY_SAVE_RAM: return session->save.data();
+    case RETRO_MEMORY_SYSTEM_RAM: return session->workRam.data();
+    default: return nullptr;
+  }
 }
 
 RETRO_API size_t retro_get_memory_size(unsigned id) {
-  if (id != RETRO_MEMORY_SAVE_RAM || !session) return 0;
-  return session->save.size();
+  if (!session) return 0;
+  switch (id) {
+    case RETRO_MEMORY_SAVE_RAM: return session->save.size();
+    case RETRO_MEMORY_SYSTEM_RAM: return session->workRam.size();
+    default: return 0;
+  }
 }
