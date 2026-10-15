@@ -10,12 +10,26 @@
 #include "snaggletooth/snes/snes.h"
 
 #include <array>
+#include <cstdint>
+#include <memory>
+#include <vector>
 
 namespace snaggletooth_libretro {
 
-// The machine keeps a pointer to the observer, so a session is built in place and never moved.
+// Where the machine runs its sound unit's work and its picture's: on the thread the frontend
+// calls the core on, or each on a thread of its own beside it. The sound, the picture and the
+// state are the same either way.
+struct MachineThreads {
+  bool audio = false;
+  bool picture = true;
+
+  [[nodiscard]] bool operator==(const MachineThreads&) const noexcept = default;
+};
+
+// The machine keeps a pointer to the observer and the session's buffers are handed to the
+// frontend, so a session is built in place and never moved.
 struct Session {
-  explicit Session(const snaggletooth::SnesConfig& config);
+  Session(std::vector<std::uint8_t> image, snaggletooth::Region region, MachineThreads threads);
   Session(const Session&) = delete;
   Session& operator=(const Session&) = delete;
 
@@ -25,23 +39,34 @@ struct Session {
   void runFrame();
 
   // Hands the frontend the picture the last frame made, telling it the new geometry first when
-  // the picture's shape has changed.
+  // the picture's shape or aspect has changed.
   void showPicture();
 
   // Hands the frontend the sound the last frame made, every sample from the console's time up
   // to the frame's end.
   void playSound();
 
+  // Moves the machine's work onto the threads asked for. The machine takes its threads when it
+  // is built, so a change builds a new machine on the same cartridge and restores the running
+  // one's state into it: the game carries on from the cycle it stopped at, with the same pads,
+  // save and work RAM.
+  void runOn(MachineThreads threads);
+
+  // The cartridge image the machine was built from, and the configuration it was built with.
+  std::vector<std::uint8_t> rom;
+  snaggletooth::SnesConfig config;
   Screen screen;
-  snaggletooth::Snes machine;
-  BatterySave save{machine};
+  std::unique_ptr<snaggletooth::Snes> machine;
+  BatterySave save{*machine};
   // Where the machine's sound is drained to each frame, in as many passes as it takes. A frame
   // makes about 533 samples at 60 Hz and 640 at 50 Hz, so one pass is the usual case.
   std::array<snaggletooth::StereoFrame, 1024> sound{};
-  // The geometry the frontend was last told.
+  // The aspect the player chose, and the geometry the frontend was last told.
+  Aspect aspect = Aspect::SquarePixels;
   unsigned shownWidth = kBaseWidth;
   unsigned shownHeight = kBaseHeight;
   unsigned shownLines = kBaseHeight;
+  Aspect shownAspect = Aspect::SquarePixels;
 };
 
 }  // namespace snaggletooth_libretro

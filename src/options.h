@@ -4,6 +4,11 @@
 #pragma once
 
 #include "picture.h"
+#include "session.h"
+
+#include "snaggletooth/snes/snes.h"
+
+#include <optional>
 
 namespace snaggletooth_libretro {
 
@@ -15,7 +20,13 @@ void registerOptions();
 // Whether the frontend reports that the player changed an option since it was last asked.
 bool optionsChanged();
 
-// The interlace presentation the player chose, or Weave where the frontend has no choice for it.
+// Each option as the player set it, or its default where the frontend has no choice for it.
+// The interlace presentation defaults to Weave and the aspect to square pixels. The region is
+// std::nullopt under Auto, the default, where the cartridge's header names it. The machine runs
+// its picture on a thread of its own and its sound on the frontend's thread by default.
 Interlace interlaceOption();
+Aspect aspectOption();
+std::optional<snaggletooth::Region> regionOption();
+MachineThreads threadsOption();
 
 }  // namespace snaggletooth_libretro

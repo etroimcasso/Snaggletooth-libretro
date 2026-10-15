@@ -18,10 +18,13 @@ constexpr unsigned kBaseHeight = 224u;
 constexpr unsigned kMaxWidth = 512u;
 constexpr unsigned kMaxHeight = 478u;
 
-// The picture's aspect is that of square pixels 256 across, over the lines the console draws
-// (224, or 239 for the taller picture). A frame in half-pixels and a woven one keep that same
-// aspect, so the picture holds one shape on screen whatever size the frame is.
-float aspectOf(unsigned lines);
+// The shape the frontend scales the picture to. SquarePixels is that of square pixels 256
+// across, over the lines the console draws (224, or 239 for the taller picture); FourByThree is
+// the television's 4:3 whatever the lines. A frame in half-pixels and a woven one keep the
+// aspect of the lines drawn, so the picture holds one shape on screen whatever size the frame is.
+enum class Aspect : std::uint8_t { SquarePixels, FourByThree };
+
+float aspectOf(unsigned lines, Aspect aspect);
 
 // How a game's interlaced fields are shown. The machine draws one field a frame, alternating
 // parity: Weave interleaves the last two into the full-height picture the console sent, Bob

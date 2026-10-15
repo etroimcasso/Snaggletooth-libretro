@@ -4,7 +4,8 @@
 
 namespace snaggletooth_libretro {
 
-float aspectOf(unsigned lines) {
+float aspectOf(unsigned lines, Aspect aspect) {
+  if (aspect == Aspect::FourByThree) return 4.0f / 3.0f;
   return static_cast<float>(kBaseWidth) / static_cast<float>(lines);
 }
 
