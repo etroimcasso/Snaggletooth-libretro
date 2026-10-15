@@ -91,18 +91,24 @@ std::optional<Cheat> gameGenie(std::string_view text) {
   const std::uint32_t scrambled = word & kBusMask;
   std::uint32_t address = 0;
   for (const unsigned from : kGameGenieAddressBits) address = address << 1 | (scrambled >> from & 1u);
-  return Cheat{.address = address,
+  return Cheat{.code = {},
+               .address = address,
                .value = static_cast<std::uint8_t>(word >> 24),
-               .kind = CheatKind::RomPatch};
+               .kind = CheatKind::RomPatch,
+               .original = std::nullopt,
+               .on = false};
 }
 
 std::optional<Cheat> addressAndValue(std::string_view address, std::string_view value) {
   const std::optional<std::uint32_t> where = readHex(address);
   const std::optional<std::uint32_t> what = readHex(value);
   if (!where || !what) return std::nullopt;
-  return Cheat{.address = *where,
+  return Cheat{.code = {},
+               .address = *where,
                .value = static_cast<std::uint8_t>(*what),
-               .kind = CheatKind::EveryFrame};
+               .kind = CheatKind::EveryFrame,
+               .original = std::nullopt,
+               .on = false};
 }
 
 // The code `code` names, read without the whitespace at either end: `XXYY-ZZZZ` as Game Genie,
