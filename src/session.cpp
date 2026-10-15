@@ -30,6 +30,7 @@ void Session::runFrame() {
   } catch (const FrameFinished&) {
   }
   save.copyFromMachine(*machine);
+  workRam.copyFromMachine(*machine);
 }
 
 void Session::showPicture() {

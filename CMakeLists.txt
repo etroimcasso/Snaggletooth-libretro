@@ -39,10 +39,12 @@ add_library(snaggletooth_libretro MODULE
   src/controllers.cpp
   src/frontend.cpp
   src/libretro.cpp
+  src/memory_map.cpp
   src/options.cpp
   src/picture.cpp
   src/session.cpp
   src/sound.cpp
+  src/work_ram.cpp
 )
 target_compile_features(snaggletooth_libretro PRIVATE cxx_std_20)
 target_compile_definitions(snaggletooth_libretro PRIVATE
@@ -112,6 +114,7 @@ if(SNAGGLETOOTH_LIBRETRO_BUILD_TESTS)
     tests/controllers_test.cpp
     tests/battery_save_test.cpp
     tests/options_test.cpp
+    tests/work_ram_test.cpp
   )
   target_compile_features(snaggletooth_libretro_tests PRIVATE cxx_std_20)
   set_target_properties(snaggletooth_libretro_tests PROPERTIES CXX_EXTENSIONS OFF)

@@ -32,6 +32,7 @@ library runs.
 | Sound | Done — the console's stereo sound at its own rate, 32,000 samples a second, handed to the frontend with every frame; the frontend resamples it for the output device |
 | Controllers | Done — two ports, each holding the console's standard pad (SNES Joypad) or nothing (None), chosen from the frontend's controller menu; all twelve buttons named for binding, and passed to the console as the frontend reports them |
 | Battery saves | Done — a cartridge's save RAM, as large as its header declares, handed to the frontend to keep in its save file and loaded from it when the cartridge starts; the frontend's copy holds the save as each frame leaves it |
+| Work RAM and memory map | Done — the console's 128 KB of work RAM handed to the frontend as each frame leaves it, taking what the frontend writes into it before the next; a memory map placing the work RAM, its mirror in the system banks and the cartridge's save at the console's own bus addresses, for achievements and the frontend's cheat search |
 | Save states | Not started |
 | Core options | In progress — Video › Interlaced Picture (Weave, Bob or Off) and Aspect Ratio (Square Pixels or 4:3); System › Region (Auto, NTSC or PAL, applied when a cartridge loads), Audio Thread and Picture Thread (the console's sound and picture each run on a thread of their own, switched while a game runs; Picture Thread is on by default) |
 | Releases | Not started |

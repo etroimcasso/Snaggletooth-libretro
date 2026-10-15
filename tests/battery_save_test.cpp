@@ -347,13 +347,13 @@ TEST(BatterySave, NextCartridgeGetsItsOwnSave) {
   EXPECT_EQ(countIn(core.save()), 1u);
 }
 
-// The save is the only memory the core offers.
+// The save and the work RAM are the only memories the core offers.
 TEST(BatterySave, NoOtherMemoryIsOffered) {
   Core core;
   ASSERT_TRUE(core.loaded());
   ASSERT_TRUE(core.load(saveCartridge(kEightKilobytes)));
   core.run();
-  for (const unsigned id : {RETRO_MEMORY_RTC, RETRO_MEMORY_SYSTEM_RAM, RETRO_MEMORY_VIDEO_RAM}) {
+  for (const unsigned id : {RETRO_MEMORY_RTC, RETRO_MEMORY_VIDEO_RAM}) {
     EXPECT_EQ(core.memoryData(id), nullptr) << "id " << id;
     EXPECT_EQ(core.memorySize(id), 0u) << "id " << id;
   }
