@@ -66,6 +66,15 @@ if(APPLE)
   set_target_properties(snaggletooth_libretro PROPERTIES SUFFIX ".dylib")
 endif()
 
+# The core's info file sits beside the module in the build tree, so the directory a build
+# produces holds both files a frontend installs. It is copied on every build.
+add_custom_target(snaggletooth_libretro_info ALL
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    ${CMAKE_CURRENT_SOURCE_DIR}/snaggletooth_libretro.info
+    $<TARGET_FILE_DIR:snaggletooth_libretro>/snaggletooth_libretro.info
+  DEPENDS snaggletooth_libretro
+)
+
 # Warnings are errors on this project's own targets only.
 if(MSVC)
   target_compile_options(snaggletooth_libretro PRIVATE /W4 /WX)
@@ -117,6 +126,7 @@ if(SNAGGLETOOTH_LIBRETRO_BUILD_TESTS)
     tests/options_test.cpp
     tests/work_ram_test.cpp
     tests/cheats_test.cpp
+    tests/core_info_test.cpp
   )
   target_compile_features(snaggletooth_libretro_tests PRIVATE cxx_std_20)
   set_target_properties(snaggletooth_libretro_tests PROPERTIES CXX_EXTENSIONS OFF)
@@ -128,13 +138,15 @@ if(SNAGGLETOOTH_LIBRETRO_BUILD_TESTS)
     RETRO_IMPORT_SYMBOLS
     SNAGGLETOOTH_LIBRETRO_VERSION="${PROJECT_VERSION}"
     SNAGGLETOOTH_LIBRETRO_PATH="$<TARGET_FILE:snaggletooth_libretro>"
+    SNAGGLETOOTH_LIBRETRO_INFO_PATH="$<TARGET_FILE_DIR:snaggletooth_libretro>/snaggletooth_libretro.info"
+    SNAGGLETOOTH_LIBRETRO_LICENSE_PATH="${CMAKE_CURRENT_SOURCE_DIR}/LICENSE"
   )
   target_link_libraries(snaggletooth_libretro_tests PRIVATE
     snaggletooth::snaggletooth
     GTest::gtest_main
     ${CMAKE_DL_LIBS}
   )
-  add_dependencies(snaggletooth_libretro_tests snaggletooth_libretro)
+  add_dependencies(snaggletooth_libretro_tests snaggletooth_libretro snaggletooth_libretro_info)
   if(MSVC)
     target_compile_options(snaggletooth_libretro_tests PRIVATE /W4 /WX)
   else()

@@ -19,6 +19,7 @@ library runs.
 
 - [Status](#status)
 - [Building](#building)
+- [Installing](#installing)
 - [Testing](#testing)
 - [License](#license)
 
@@ -34,8 +35,9 @@ library runs.
 | Battery saves | Done — a cartridge's save RAM, as large as its header declares, handed to the frontend to keep in its save file and loaded from it when the cartridge starts; the frontend's copy holds the save as each frame leaves it |
 | Work RAM and memory map | Done — the console's 128 KB of work RAM handed to the frontend as each frame leaves it, taking what the frontend writes into it before the next; a memory map placing the work RAM, its mirror in the system banks and the cartridge's save at the console's own bus addresses, for achievements and the frontend's cheat search |
 | Cheats | Done — Game Genie codes patch the cartridge's bytes in the running console and are put back when turned off; Pro Action Replay (`AAAAAAVV`) and raw (`AAAAAA:VV`) codes write their byte before every frame |
+| Core information | Done — `snaggletooth_libretro.info`: the core's name, system, extensions and the libretro features it offers, as RetroArch lists them before the core loads |
 | Save states | Not started |
-| Core options | In progress — Video › Interlaced Picture (Weave, Bob or Off) and Aspect Ratio (Square Pixels or 4:3); System › Region (Auto, NTSC or PAL, applied when a cartridge loads), Audio Thread and Picture Thread (the console's sound and picture each run on a thread of their own, switched while a game runs; Picture Thread is on by default) |
+| Core options | Done — Video › Interlaced Picture (Weave, Bob or Off) and Aspect Ratio (Square Pixels or 4:3); System › Region (Auto, NTSC or PAL, applied when a cartridge loads), Audio Thread and Picture Thread (the console's sound and picture each run on a thread of their own, switched while a game runs; Picture Thread is on by default) |
 | Releases | Not started |
 | Official libretro core | Not started |
 
@@ -58,6 +60,15 @@ Studio 2022. The core lands in `build/` (`build\Release\` under Visual Studio) a
 Keep `--config Release`: the Visual Studio generator builds Debug without it, whatever the
 configure step said. A Release build is optimized, drops code the core never reaches and exports
 only the libretro entry points.
+
+## Installing
+
+A build leaves [`snaggletooth_libretro.info`](snaggletooth_libretro.info) beside the core. Copy
+the core into RetroArch's cores directory and the info file into its core info directory, which
+is a directory of its own; RetroArch's Settings › Directory names both (Cores, Core Info). The
+info file is what RetroArch shows under Information › Core
+Information and what it lists the core by when choosing one for a cartridge: Nintendo - SNES / SFC
+(Snaggletooth).
 
 ## Testing
 
