@@ -12,8 +12,9 @@ library runs.
 > [!IMPORTANT]
 > **This is an early build.** A frontend loads the core and a cartridge, shows the picture the
 > cartridge draws, plays its sound and passes it the two players' controllers, one console frame
-> at a time, and a game's battery-backed save is kept in the frontend's save file. Save states
-> come next. The table below shows what is done.
+> at a time; a game's battery-backed save is kept in the frontend's save file, and the frontend's
+> save states, rewind, run-ahead and netplay take the console's whole state at any frame.
+> Releases come next. The table below shows what is done.
 
 ## Contents
 
@@ -36,7 +37,7 @@ library runs.
 | Work RAM and memory map | Done — the console's 128 KB of work RAM handed to the frontend as each frame leaves it, taking what the frontend writes into it before the next; a memory map placing the work RAM, its mirror in the system banks and the cartridge's save at the console's own bus addresses, for achievements and the frontend's cheat search |
 | Cheats | Done — Game Genie codes patch the cartridge's bytes in the running console and are put back when turned off; Pro Action Replay (`AAAAAAVV`) and raw (`AAAAAA:VV`) codes write their byte before every frame |
 | Core information | Done — `snaggletooth_libretro.info`: the core's name, system, extensions and the libretro features it offers, as RetroArch lists them before the core loads |
-| Save states | Not started |
+| Save states | Done — the console's whole state in Snaggletooth's own byte form, the same size from the moment a cartridge loads and the same bytes on every platform, so a state saved on one computer loads on another; a loaded state puts the game back on the cycle it was saved at, and the pictures and sound that follow are the ones that followed the save, which the frontend's rewind, run-ahead and netplay rely on. Under Weave, the first picture of an interlaced game after a load keeps the other field's lines from the picture shown before it, until the next field replaces them |
 | Core options | Done — Video › Interlaced Picture (Weave, Bob or Off) and Aspect Ratio (Square Pixels or 4:3); System › Region (Auto, NTSC or PAL, applied when a cartridge loads), Audio Thread and Picture Thread (the console's sound and picture each run on a thread of their own, switched while a game runs; Picture Thread is on by default) |
 | Releases | Not started |
 | Official libretro core | Not started |

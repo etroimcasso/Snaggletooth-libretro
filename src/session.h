@@ -1,12 +1,14 @@
 // A loaded cartridge and everything that runs it: the machine, the picture it draws into, the
 // sound it is drained into, the save and work RAM the frontend keeps with the map that places
-// them on the bus, and the picture's shape as the frontend was last told it.
+// them on the bus, the machine's saved states, and the picture's shape as the frontend was last
+// told it.
 
 #pragma once
 
 #include "battery_save.h"
 #include "memory_map.h"
 #include "picture.h"
+#include "save_state.h"
 #include "work_ram.h"
 
 #include "snaggletooth/snes/snes.h"
@@ -14,6 +16,7 @@
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <vector>
 
 namespace snaggletooth_libretro {
@@ -54,6 +57,12 @@ struct Session {
   // save and work RAM.
   void runOn(MachineThreads threads);
 
+  // Puts a saved state into the machine (SaveState::load), then copies the machine's save and
+  // work RAM into the frontend's buffers, so they hold the state's and the next frame carries
+  // no change of the frontend's into the machine. Answers false, with the machine and both
+  // buffers as they were, when the state is refused.
+  bool loadState(std::span<const std::uint8_t> bytes);
+
   // The cartridge image the machine was built from, and the configuration it was built with.
   std::vector<std::uint8_t> rom;
   snaggletooth::SnesConfig config;
@@ -62,6 +71,7 @@ struct Session {
   BatterySave save{*machine};
   WorkRam workRam{*machine};
   MemoryMap memoryMap{*machine, workRam.data(), save.data()};
+  SaveState states{*machine};
   // Where the machine's sound is drained to each frame, in as many passes as it takes. A frame
   // makes about 533 samples at 60 Hz and 640 at 50 Hz, so one pass is the usual case.
   std::array<snaggletooth::StereoFrame, 1024> sound{};
