@@ -412,9 +412,9 @@ class Core {
 // visiting each of the four combinations and coming back to the default.
 constexpr std::size_t kSwitchEvery = 7u;
 const std::vector<std::pair<const char*, const char*>> kThreadChoices = {
-    {"enabled", "enabled"},   {"enabled", "disabled"}, {"disabled", "disabled"},
-    {"disabled", "enabled"},  {"enabled", "enabled"},  {"disabled", "disabled"},
-    {"enabled", "disabled"},  {"disabled", "enabled"},
+    {"enabled", "enabled"},   {"enabled", "disabled"}, {"disabled", "enabled"},
+    {"disabled", "disabled"}, {"enabled", "enabled"},  {"disabled", "enabled"},
+    {"enabled", "disabled"},  {"disabled", "disabled"},
 };
 
 // A cartridge's runs, with the thread options moved through kThreadChoices when `switching`.
@@ -442,7 +442,7 @@ TEST(Options, EveryOptionIsListedInCategories) {
                                 "snaggletooth_aspect|video|square|square,4:3",
                                 "snaggletooth_region|system|auto|auto,ntsc,pal",
                                 "snaggletooth_apu_thread|system|disabled|disabled,enabled",
-                                "snaggletooth_ppu_thread|system|enabled|enabled,disabled",
+                                "snaggletooth_ppu_thread|system|disabled|disabled,enabled",
                             }));
   EXPECT_TRUE(seen.v1Options.empty());
   EXPECT_TRUE(seen.v0Options.empty());
@@ -458,7 +458,7 @@ TEST(Options, AFirstVersionFrontendIsListedEveryPlainOption) {
                                 "snaggletooth_aspect|square|square,4:3",
                                 "snaggletooth_region|auto|auto,ntsc,pal",
                                 "snaggletooth_apu_thread|disabled|disabled,enabled",
-                                "snaggletooth_ppu_thread|enabled|enabled,disabled",
+                                "snaggletooth_ppu_thread|disabled|disabled,enabled",
                             }));
   EXPECT_TRUE(seen.v2Options.empty());
 }
@@ -473,7 +473,7 @@ TEST(Options, AFrontendWithoutOptionVersionsIsListedEveryVariable) {
                                 "snaggletooth_aspect|Aspect Ratio; square|4:3",
                                 "snaggletooth_region|Region; auto|ntsc|pal",
                                 "snaggletooth_apu_thread|Audio Thread; disabled|enabled",
-                                "snaggletooth_ppu_thread|Picture Thread; enabled|disabled",
+                                "snaggletooth_ppu_thread|Picture Thread; disabled|enabled",
                             }));
   EXPECT_TRUE(seen.v2Options.empty());
 }
@@ -598,7 +598,10 @@ TEST(Options, TheMachineRunsOnTheThreadsTheOptionsChoose) {
   ASSERT_GT(before, 0u);
   ASSERT_TRUE(core.load(soundCartridge()));
   core.run(2u);
-  // The picture's thread by default, and the sound's on the frontend's.
+  // Both the picture and the sound on the frontend's thread by default.
+  EXPECT_EQ(threadsRunning(), before);
+  seen.set(kPictureThreadKey, "enabled");
+  core.run(2u);
   EXPECT_EQ(threadsRunning(), before + 1u);
   seen.set(kAudioThreadKey, "enabled");
   core.run(2u);
@@ -609,9 +612,6 @@ TEST(Options, TheMachineRunsOnTheThreadsTheOptionsChoose) {
   seen.set(kAudioThreadKey, "disabled");
   core.run(2u);
   EXPECT_EQ(threadsRunning(), before);
-  seen.set(kPictureThreadKey, "enabled");
-  core.run(2u);
-  EXPECT_EQ(threadsRunning(), before + 1u);
 }
 
 TEST(Options, ThreadOptionsChosenBeforeLoadBuildTheMachineOnThem) {
@@ -665,7 +665,7 @@ TEST(Options, TheSaveBufferStaysPutAcrossASwitch) {
   const std::uint8_t count = save[0];
   ASSERT_NE(count, 0u);
   seen.set(kAudioThreadKey, "enabled");
-  seen.set(kPictureThreadKey, "disabled");
+  seen.set(kPictureThreadKey, "enabled");
   core.run();
   EXPECT_EQ(core.save(), save);
   EXPECT_EQ(save[0], static_cast<std::uint8_t>(count + 1u));

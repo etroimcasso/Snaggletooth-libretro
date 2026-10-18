@@ -430,7 +430,7 @@ TEST(SaveState, TheSizeHoldsFromLoadToUnload) {
   core.run(3u);
   EXPECT_EQ(core.stateSize(), size);
   seen.set(kAudioThreadKey, "enabled");
-  seen.set(kPictureThreadKey, "disabled");
+  seen.set(kPictureThreadKey, "enabled");
   core.run(3u);
   EXPECT_EQ(core.stateSize(), size);
   EXPECT_EQ(core.serialize().size(), size);
@@ -499,7 +499,7 @@ TEST(SaveState, AStateLoadsAfterTheCartridgeIsLoadedAgain) {
 // runs on the same.
 TEST(SaveState, AStateLoadsOnOtherThreads) {
   const std::vector<std::pair<const char*, const char*>> others = {
-      {"disabled", "disabled"}, {"enabled", "disabled"}, {"enabled", "enabled"}};
+      {"disabled", "enabled"}, {"enabled", "disabled"}, {"enabled", "enabled"}};
   for (const auto& rom : cartridges()) {
     for (const auto& [audio, picture] : others) {
       Frontend seen;

@@ -26,7 +26,7 @@ namespace snaggletooth_libretro {
 // state are the same either way.
 struct MachineThreads {
   bool audio = false;
-  bool picture = true;
+  bool picture = false;
 
   [[nodiscard]] bool operator==(const MachineThreads&) const noexcept = default;
 };

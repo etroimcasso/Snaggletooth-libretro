@@ -73,12 +73,13 @@ retro_core_option_v2_definition optionDefinitions[] = {
      .desc = "Picture Thread",
      .desc_categorized = "Picture Thread",
      .info = "Draws the console's picture on a thread of its own beside the core's. The picture, "
-             "the sound and the game are the same either way; a host whose cores are each too "
-             "slow to run the whole console keeps up by sharing the work.",
+             "the sound and the game are the same either way. Enable it if a game cannot hold "
+             "50/60fps: a host whose cores are each too slow to run the whole console keeps up "
+             "by sharing the work.",
      .info_categorized = nullptr,
      .category_key = "system",
-     .values = {{"enabled", nullptr}, {"disabled", nullptr}, {nullptr, nullptr}},
-     .default_value = "enabled"},
+     .values = {{"disabled", nullptr}, {"enabled", nullptr}, {nullptr, nullptr}},
+     .default_value = "disabled"},
     {},
 };
 
@@ -182,7 +183,7 @@ std::optional<snaggletooth::Region> regionOption() {
 
 MachineThreads threadsOption() {
   return MachineThreads{.audio = switchedOn(kAudioThreadKey, false),
-                        .picture = switchedOn(kPictureThreadKey, true)};
+                        .picture = switchedOn(kPictureThreadKey, false)};
 }
 
 }  // namespace snaggletooth_libretro
