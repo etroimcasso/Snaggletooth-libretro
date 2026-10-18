@@ -71,7 +71,7 @@ endif()
 # produces holds both files a frontend installs. It is copied on every build.
 add_custom_target(snaggletooth_libretro_info ALL
   COMMAND ${CMAKE_COMMAND} -E copy_if_different
-    ${CMAKE_CURRENT_SOURCE_DIR}/snaggletooth_libretro.info
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/snaggletooth_libretro.info
     $<TARGET_FILE_DIR:snaggletooth_libretro>/snaggletooth_libretro.info
   DEPENDS snaggletooth_libretro
 )

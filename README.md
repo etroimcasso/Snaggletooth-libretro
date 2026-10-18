@@ -64,7 +64,7 @@ only the libretro entry points.
 
 ## Installing
 
-A build leaves [`snaggletooth_libretro.info`](snaggletooth_libretro.info) beside the core. Copy
+A build leaves [`snaggletooth_libretro.info`](src/snaggletooth_libretro.info) beside the core. Copy
 the core into RetroArch's cores directory and the info file into its core info directory, which
 is a directory of its own; RetroArch's Settings › Directory names both (Cores, Core Info). The
 info file is what RetroArch shows under Information › Core
