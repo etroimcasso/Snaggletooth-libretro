@@ -5,7 +5,9 @@
 // What the game sees is read back through the save itself. The suite's cartridge counts frames
 // into its save, adding one to a 16-bit count at the save's first two bytes in every vertical
 // blank, so the count after a run says which save the frame began from, and it writes whether
-// B is held on the first pad to the third byte.
+// B is held on the first pad to the third byte. A run ends as its frame's vertical blank begins,
+// and the handler runs as the next run begins: the first run after a load or the reset button,
+// from power-on to the first vertical blank, counts nothing, and the count after N runs is N - 1.
 
 #include <libretro.h>
 
@@ -221,14 +223,14 @@ TEST(BatterySave, SizeIsWhatTheHeaderDeclares) {
   }
 }
 
-// Each run's write is in the buffer when the run returns: the count after N runs is N.
+// Each run's write is in the buffer when the run returns: the count after N runs is N - 1.
 TEST(BatterySave, EachFramesWriteIsInTheBufferAfterItsRun) {
   Core core;
   ASSERT_TRUE(core.loaded());
   ASSERT_TRUE(core.load(saveCartridge(kEightKilobytes)));
   for (std::uint16_t runs = 1u; runs <= 300u; ++runs) {
     core.run();
-    ASSERT_EQ(countIn(core.save()), runs);
+    ASSERT_EQ(countIn(core.save()), runs - 1u);
   }
 }
 
@@ -256,7 +258,7 @@ TEST(BatterySave, SaveWrittenAfterLoadIsTheGamesSave) {
   ASSERT_TRUE(core.load(saveCartridge(kEightKilobytes)));
   fillWithPattern(core.save());
   setCount(core.save(), 0x12FFu);
-  core.run();
+  core.run(2u);
   EXPECT_EQ(countIn(core.save()), 0x1300u);
   EXPECT_EQ(core.save()[kButtonB], 0u);
   expectPatternFrom(core.save(), kFirstUntouched);
@@ -274,7 +276,7 @@ TEST(BatterySave, SaveSurvivesUnloadAndReload) {
   ASSERT_TRUE(core.load(cartridge));
   fillWithPattern(core.save());
   setCount(core.save(), 0u);
-  core.run(10u);
+  core.run(11u);
   const std::vector<std::uint8_t> kept(core.save().begin(), core.save().end());
   ASSERT_EQ(countIn(kept), 10u);
   core.unload();
@@ -285,7 +287,7 @@ TEST(BatterySave, SaveSurvivesUnloadAndReload) {
   ASSERT_EQ(core.save().size(), kept.size());
   EXPECT_EQ(countIn(core.save()), 0u);
   std::ranges::copy(kept, core.save().begin());
-  core.run();
+  core.run(2u);
   EXPECT_EQ(countIn(core.save()), 11u);
   expectPatternFrom(core.save(), kFirstUntouched);
 }
@@ -295,7 +297,7 @@ TEST(BatterySave, WriteBetweenFramesReachesTheNextFrame) {
   Core core;
   ASSERT_TRUE(core.loaded());
   ASSERT_TRUE(core.load(saveCartridge(kEightKilobytes)));
-  core.run(5u);
+  core.run(6u);
   ASSERT_EQ(countIn(core.save()), 5u);
   setCount(core.save(), 0x0300u);
   core.run();
@@ -327,10 +329,10 @@ TEST(BatterySave, ResetKeepsTheSave) {
   Core core;
   ASSERT_TRUE(core.loaded());
   ASSERT_TRUE(core.load(saveCartridge(kEightKilobytes)));
-  core.run(5u);
+  core.run(6u);
   core.reset();
   EXPECT_EQ(countIn(core.save()), 5u);
-  core.run();
+  core.run(2u);
   EXPECT_EQ(countIn(core.save()), 6u);
 }
 
@@ -343,7 +345,7 @@ TEST(BatterySave, NextCartridgeGetsItsOwnSave) {
   ASSERT_TRUE(core.load(saveCartridge(kTwoKilobytes)));
   ASSERT_EQ(core.save().size(), 2048u);
   EXPECT_EQ(countIn(core.save()), 0u);
-  core.run();
+  core.run(2u);
   EXPECT_EQ(countIn(core.save()), 1u);
 }
 

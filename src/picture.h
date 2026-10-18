@@ -32,8 +32,9 @@ float aspectOf(unsigned lines, Aspect aspect);
 enum class Interlace : std::uint8_t { Weave, Bob, Off };
 
 // Thrown by the frame observer as the machine finishes a frame. The machine returns from
-// run() through it with the beam at the next frame's first line, which is where a frontend's
-// frame ends; the next run() spends the rest of the interrupted budget before its own.
+// run() through it with the beam where the frame's vertical blank begins, ahead of the blank's
+// interrupt handler and controller read, which is where a frontend's frame ends; the next run()
+// spends the rest of the interrupted budget before its own.
 struct FrameFinished {};
 
 // The machine's frame observer. It turns each finished frame into the picture the frontend is

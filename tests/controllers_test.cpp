@@ -114,9 +114,9 @@ constexpr unsigned kPortOneX = 0u;
 constexpr unsigned kPortTwoX = 4u;
 constexpr unsigned kReadRow = 100u;
 
-// The cartridge reads a port in one frame's vertical blank and the picture shows it in the
-// next, so a change made as a run begins is on screen at the end of the run after it.
-constexpr std::size_t kRunsToShow = 2u;
+// The cartridge reads a port in a vertical blank and the picture drawn after it shows it. A run
+// begins as a vertical blank does, so a change made as a run begins is on screen at its end.
+constexpr std::size_t kRunsToShow = 1u;
 
 // The RetroPad ids and the console's buttons they stand for, as libretro.h lays them out.
 struct PadButton {
@@ -436,8 +436,9 @@ TEST(Controllers, BitmaskAndSingleButtonReportsAgree) {
   const std::vector<std::array<Reading, 2>> without = scriptedReadings(false, single);
   ASSERT_EQ(withMasks.size(), 40u);
   EXPECT_EQ(withMasks, without);
-  // Each run's presses are on screen two runs later.
-  for (std::size_t frame = 0; frame + kRunsToShow < withMasks.size(); ++frame) {
+  // Each run's presses are on screen as it ends, from the second run: the first, from power-on to
+  // the first vertical blank, reads no pad.
+  for (std::size_t frame = 1; frame + kRunsToShow <= withMasks.size(); ++frame) {
     const std::array<std::uint16_t, 2> held = pressesAt(frame);
     EXPECT_EQ(withMasks[frame + kRunsToShow - 1u][0], padReading(held[0])) << "frame " << frame;
     EXPECT_EQ(withMasks[frame + kRunsToShow - 1u][1], padReading(held[1])) << "frame " << frame;

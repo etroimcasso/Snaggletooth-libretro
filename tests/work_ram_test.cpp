@@ -6,7 +6,10 @@
 // What the game sees is read back through the work RAM itself. The suite's cartridge counts
 // frames into it, adding one to a 16-bit count at $7E:0000-0001 in every vertical blank, and
 // copies the byte at direct-page $10 — bank $00's mirror of $7E:0010 — to $7E:0002, so a byte
-// the frontend writes shows up through the console's own mirror.
+// the frontend writes shows up through the console's own mirror. A run ends as its frame's
+// vertical blank begins, and the handler runs as the next run begins: the first run after a load
+// or the reset button, from power-on to the first vertical blank, counts nothing, and the count
+// after N runs is N - 1.
 //
 // The map is checked against the machine: every bus address resolved through the descriptors,
 // as libretro.h describes resolving one, must land on the byte Snes::physical names for it, or
@@ -334,7 +337,7 @@ TEST(WorkRam, WorkRamIsTheConsoles128Kilobytes) {
   EXPECT_EQ(nonzero, 0u);
 }
 
-// Each run's write is in the buffer when the run returns: the count after N runs is N.
+// Each run's write is in the buffer when the run returns: the count after N runs is N - 1.
 TEST(WorkRam, EachFramesWriteIsInTheBufferAfterItsRun) {
   Frontend seen;
   Core core(seen);
@@ -342,7 +345,7 @@ TEST(WorkRam, EachFramesWriteIsInTheBufferAfterItsRun) {
   ASSERT_TRUE(core.load(workRamCartridge()));
   for (std::uint16_t runs = 1u; runs <= 300u; ++runs) {
     core.run();
-    ASSERT_EQ(countIn(core.workRam()), runs);
+    ASSERT_EQ(countIn(core.workRam()), runs - 1u);
   }
 }
 
@@ -374,7 +377,7 @@ TEST(WorkRam, WriteBetweenFramesContinuesTheCount) {
   Core core(seen);
   ASSERT_TRUE(core.loaded());
   ASSERT_TRUE(core.load(workRamCartridge()));
-  core.run(5u);
+  core.run(6u);
   ASSERT_EQ(countIn(core.workRam()), 5u);
   setCount(core.workRam(), 0x12FFu);
   core.run();
@@ -399,7 +402,7 @@ TEST(WorkRam, BufferStaysPutThroughResetAndThreadSwitch) {
   EXPECT_EQ(countIn(core.workRam()), 0x0101u);
   core.reset();
   EXPECT_EQ(countIn(core.workRam()), 0x0101u);
-  core.run();
+  core.run(2u);
   EXPECT_EQ(core.memoryData(RETRO_MEMORY_SYSTEM_RAM), first);
   EXPECT_EQ(countIn(core.workRam()), 0x0102u);
   seen.set(kAudioThreadKey, "enabled");
@@ -420,11 +423,11 @@ TEST(WorkRam, NextCartridgeGetsItsOwnWorkRam) {
   Core core(seen);
   ASSERT_TRUE(core.loaded());
   ASSERT_TRUE(core.load(workRamCartridge()));
-  core.run(4u);
+  core.run(5u);
   ASSERT_EQ(countIn(core.workRam()), 4u);
   ASSERT_TRUE(core.load(workRamCartridge()));
   EXPECT_EQ(countIn(core.workRam()), 0u);
-  core.run();
+  core.run(2u);
   EXPECT_EQ(countIn(core.workRam()), 1u);
 }
 
@@ -498,7 +501,7 @@ TEST(WorkRam, MapIsSentOnEveryLoad) {
   seen.takesMemoryMaps = false;
   ASSERT_TRUE(core.load(workRamCartridge()));
   EXPECT_EQ(seen.maps.size(), 3u);
-  core.run(2u);
+  core.run(3u);
   EXPECT_EQ(countIn(core.workRam()), 2u);
 }
 
