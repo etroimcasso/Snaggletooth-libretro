@@ -129,13 +129,16 @@ RETRO_API void retro_reset(void) {
   if (session) session->machine->reset();
 }
 
-// One console frame. A save or work RAM the frontend wrote since the last frame is in the
-// machine as the frame begins, then the byte of every every-frame cheat that is on, and each
-// port holds what the frontend reports for it, so the frame's reads of the save, the work RAM
-// and the pads see them. The frontend is handed the picture that frame makes, then the sound it
-// made, and its save and work-RAM buffers hold both as the frame left them. A change to the
-// interlace, aspect or thread options takes effect from this frame; a machine rebuilt on other
-// threads is given the ROM patches of the cheats that are on.
+// One console frame, from the start of one vertical blank to the start of the next, where the
+// machine reports the finished picture; the first after a load or the reset button runs from
+// power-on to the first vertical blank. A save or work RAM the frontend wrote since the last
+// frame is in the machine as the frame begins, then the byte of every every-frame cheat that is
+// on, and each port holds what the frontend reports for it, so the frame's reads of the save,
+// the work RAM and the pads — the vertical blank's controller read among them — see them. The
+// frontend is handed the picture that frame makes, then the sound it made, and its save and
+// work-RAM buffers hold both as the frame left them. A change to the interlace, aspect or thread
+// options takes effect from this frame; a machine rebuilt on other threads is given the ROM
+// patches of the cheats that are on.
 RETRO_API void retro_run(void) {
   if (inputPoll != nullptr) inputPoll();
   if (!session) return;

@@ -417,9 +417,12 @@ TEST(Sound, AResetKeepsTheSoundGoing) {
   core.reset();
   const std::size_t beforeReset = seen.samples.size();
   core.run(kRuns);
-  // Every run after the reset hands over a frame's sound — 32,000 a second at about 60.1
-  // frames a second is 532.5 a frame — and the cartridge, started again, sounds again.
-  for (std::size_t at = kRuns; at < seen.afterRun.size(); ++at) {
+  // The first run after the reset, from power-on to the first vertical blank, hands over as much
+  // sound as the first run after the load; every run after it hands over a frame's sound —
+  // 32,000 a second at about 60.1 frames a second is 532.5 a frame — and the cartridge, started
+  // again, sounds again.
+  EXPECT_EQ(seen.afterRun[kRuns] - seen.afterRun[kRuns - 1u], seen.afterRun[0]);
+  for (std::size_t at = kRuns + 1u; at < seen.afterRun.size(); ++at) {
     const std::size_t made = seen.afterRun[at] - seen.afterRun[at - 1u];
     EXPECT_GE(made, 531u) << "run " << at;
     EXPECT_LE(made, 534u) << "run " << at;

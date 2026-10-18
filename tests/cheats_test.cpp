@@ -9,6 +9,10 @@
 // byte at direct-page $10. A Game Genie code on the step byte changes how far the count moves in
 // a frame, one on the echo's operand changes which byte is echoed, and an every-frame code on
 // $7E0010 is the echo after each run.
+//
+// A run ends as its frame's vertical blank begins, and the handler runs as the next run begins:
+// the first run after a load or the reset button, from power-on to the first vertical blank,
+// runs no handler, so the cases that count from a load or a reset make that run first.
 
 #include <libretro.h>
 
@@ -271,6 +275,7 @@ TEST(Cheats, GameGenieCodePatchesTheRom) {
   Core core(seen);
   ASSERT_TRUE(core.loaded());
   ASSERT_TRUE(core.load(cheatCartridge()));
+  core.run();
   for (int run = 0; run < 3; ++run) EXPECT_EQ(core.step(), 1u);
   core.cheat(0u, true, gameGenie(kStepByte, 0x05u));
   for (int run = 0; run < 3; ++run) EXPECT_EQ(core.step(), 5u);
@@ -283,6 +288,7 @@ TEST(Cheats, TurningTheCodeOffPutsTheByteBack) {
   Core core(seen);
   ASSERT_TRUE(core.loaded());
   ASSERT_TRUE(core.load(cheatCartridge()));
+  core.run();
   const std::string code = gameGenie(kStepByte, 0x05u);
   core.cheat(0u, true, code);
   EXPECT_EQ(core.step(), 5u);
@@ -300,6 +306,7 @@ TEST(Cheats, ResetCheatsPutsEveryByteBack) {
   Core core(seen);
   ASSERT_TRUE(core.loaded());
   ASSERT_TRUE(core.load(cheatCartridge()));
+  core.run();
   const Core::Frame plain{.step = 1u, .echo = 0xAAu};
   EXPECT_EQ(core.markedRun(), plain);
   core.cheat(3u, true, gameGenie(kStepByte, 0x05u));
@@ -319,9 +326,11 @@ TEST(Cheats, RomPatchHoldsAcrossReset) {
   ASSERT_TRUE(core.loaded());
   ASSERT_TRUE(core.load(cheatCartridge()));
   core.cheat(0u, true, gameGenie(kStepByte, 0x05u));
-  core.run(3u);
+  core.run(4u);
   ASSERT_EQ(core.count(), 15u);
   core.reset();
+  EXPECT_EQ(core.count(), 15u);
+  core.run();
   EXPECT_EQ(core.count(), 15u);
   EXPECT_EQ(core.step(), 5u);
   EXPECT_EQ(core.count(), 20u);
@@ -334,6 +343,7 @@ TEST(Cheats, RomPatchHoldsAcrossAThreadSwitch) {
   Core core(seen);
   ASSERT_TRUE(core.loaded());
   ASSERT_TRUE(core.load(cheatCartridge()));
+  core.run();
   const std::string code = gameGenie(kStepByte, 0x05u);
   core.cheat(0u, true, code);
   EXPECT_EQ(core.step(), 5u);
@@ -351,6 +361,7 @@ TEST(Cheats, ActionReplayCodeWritesEveryFrame) {
   Core core(seen);
   ASSERT_TRUE(core.loaded());
   ASSERT_TRUE(core.load(cheatCartridge()));
+  core.run();
   core.cheat(0u, true, actionReplay(kEchoedAddress, 0x5Au));
   for (int run = 0; run < 10; ++run) {
     EXPECT_EQ(core.step(), 1u);
@@ -381,6 +392,7 @@ TEST(Cheats, RawCodeWritesEveryFrame) {
   Core core(seen);
   ASSERT_TRUE(core.loaded());
   ASSERT_TRUE(core.load(cheatCartridge()));
+  core.run();
   core.cheat(0u, true, raw(kEchoedAddress, 0xC3u));
   for (int run = 0; run < 10; ++run) {
     EXPECT_EQ(core.step(), 1u);
@@ -410,6 +422,7 @@ TEST(Cheats, CodeSetAgainReplacesTheOld) {
   Core core(seen);
   ASSERT_TRUE(core.loaded());
   ASSERT_TRUE(core.load(cheatCartridge()));
+  core.run();
   core.cheat(0u, true, gameGenie(kStepByte, 0x05u));
   EXPECT_EQ(core.step(), 5u);
   const std::string three = gameGenie(kStepByte, 0x03u);
@@ -496,6 +509,7 @@ TEST(Cheats, CodeSetBeforeLoadTakesEffectAtLoad) {
   ASSERT_TRUE(core.load(cheatCartridge()));
   ASSERT_EQ(seen.messages.size(), 1u);
   EXPECT_EQ(seen.messages.back(), refusal(outsideRom));
+  core.run();
   EXPECT_EQ(core.step(), 5u);
   EXPECT_EQ(core.step(), 5u);
 }
@@ -508,11 +522,12 @@ TEST(Cheats, UnloadForgetsTheCodes) {
   ASSERT_TRUE(core.load(cheatCartridge()));
   core.cheat(0u, true, gameGenie(kStepByte, 0x05u));
   core.cheat(1u, true, actionReplay(kEchoedAddress, 0x5Au));
-  core.run();
+  core.run(2u);
   ASSERT_EQ(core.count(), 5u);
   ASSERT_EQ(core.workRam()[kEcho], 0x5Au);
   core.unload();
   ASSERT_TRUE(core.load(cheatCartridge()));
+  core.run();
   EXPECT_EQ(core.step(), 1u);
   EXPECT_EQ(core.step(), 1u);
   EXPECT_EQ(core.workRam()[kEcho], static_cast<std::uint8_t>(core.workRam()[kCountLow] - 1u));

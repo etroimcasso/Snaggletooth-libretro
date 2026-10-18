@@ -38,9 +38,8 @@ struct Session {
   Session(const Session&) = delete;
   Session& operator=(const Session&) = delete;
 
-  // Runs the machine until the beam reaches the next frame's first line, so a frame drawn a line
-  // longer, as an interlaced field is, is run whole, then copies the machine's save and work RAM
-  // into the frontend's buffers.
+  // Runs the machine until the frame's vertical blank begins, where the machine reports the
+  // finished picture, then copies the machine's save and work RAM into the frontend's buffers.
   void runFrame();
 
   // Hands the frontend the picture the last frame made, telling it the new geometry first when
