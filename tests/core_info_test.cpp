@@ -101,6 +101,7 @@ struct Frontend {
   unsigned optionsVersion = 2u;
   std::optional<bool> supportsNoGame;
   std::set<unsigned> commands;  // every environment command the core sent
+  std::optional<std::uint64_t> quirks;  // the serialization quirks the core declared
 };
 
 Frontend* frontend = nullptr;
@@ -113,6 +114,9 @@ bool environment(unsigned command, void* data) {
       return true;
     case RETRO_ENVIRONMENT_GET_CORE_OPTIONS_VERSION:
       *static_cast<unsigned*>(data) = frontend->optionsVersion;
+      return true;
+    case RETRO_ENVIRONMENT_SET_SERIALIZATION_QUIRKS:
+      frontend->quirks = *static_cast<const std::uint64_t*>(data);
       return true;
     case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT:
     case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2:
@@ -293,7 +297,9 @@ TEST(CoreInfo, FlagsMatchWhatALoadSends) {
                  seen.commands.contains(RETRO_ENVIRONMENT_SET_DISK_CONTROL_EXT_INTERFACE)));
 }
 
-// The save-state flag is whether a loaded cartridge has state bytes to save.
+// The save-state flag is whether a loaded cartridge has state bytes to save, and the features
+// are libretro's deterministic ones, for netplay and run-ahead, when the core tells the frontend
+// its states have no quirk.
 TEST(CoreInfo, SaveStateFlagMatchesTheStateSize) {
   const InfoFile info = readInfo();
   Frontend seen;
@@ -301,6 +307,8 @@ TEST(CoreInfo, SaveStateFlagMatchesTheStateSize) {
   ASSERT_TRUE(core.loaded());
   ASSERT_TRUE(core.load(snaggletooth::examples::waitingImage()));
   EXPECT_EQ(info["savestate"], flag(core.serializeSize() > 0u));
+  ASSERT_TRUE(seen.quirks.has_value());
+  EXPECT_EQ(info["savestate_features"], *seen.quirks == 0u ? "deterministic" : "");
 }
 
 // The cheat flag is whether a code the frontend sets reaches the console: a raw code on a

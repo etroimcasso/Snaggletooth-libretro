@@ -75,4 +75,11 @@ void Session::runOn(MachineThreads threads) {
   machine->restore(*state);
 }
 
+bool Session::loadState(std::span<const std::uint8_t> bytes) {
+  if (!states.load(*machine, bytes)) return false;
+  save.copyFromMachine(*machine);
+  workRam.copyFromMachine(*machine);
+  return true;
+}
+
 }  // namespace snaggletooth_libretro

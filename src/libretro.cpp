@@ -5,7 +5,8 @@
 // (cartridge.h), the picture (picture.h), the sound (sound.h), the controller ports
 // (controllers.h), the cartridge's save (battery_save.h), the console's work RAM (work_ram.h)
 // and the map placing both on the bus (memory_map.h), the player's cheat codes (cheats.h), the
-// core options (options.h) and the running cartridge (session.h).
+// core options (options.h), the machine's saved states (save_state.h) and the running cartridge
+// (session.h).
 //
 // A libretro core is one per process, reached through plain functions with no handle, so the
 // running cartridge lives in this file's own state: the session a loaded cartridge runs in,
@@ -19,6 +20,7 @@
 #include "frontend.h"
 #include "options.h"
 #include "picture.h"
+#include "save_state.h"
 #include "session.h"
 #include "sound.h"
 
@@ -79,14 +81,15 @@ RETRO_API void retro_set_audio_sample_batch(retro_audio_sample_batch_t callback)
 RETRO_API void retro_set_input_poll(retro_input_poll_t callback) { inputPoll = callback; }
 RETRO_API void retro_set_input_state(retro_input_state_t callback) { inputState = callback; }
 
-// Both ports start with a pad in them, and the frontend is asked whether it reports a pad's
-// buttons as a bitmask.
+// Both ports start with a pad in them, the frontend is asked whether it reports a pad's buttons
+// as a bitmask, and it is told the save states have no serialization quirks.
 RETRO_API void retro_init(void) {
   retro_log_callback log{};
   logPrintf = environment != nullptr && environment(RETRO_ENVIRONMENT_GET_LOG_INTERFACE, &log)
                   ? log.log
                   : nullptr;
   startControllers();
+  declareSerializationQuirks();
 }
 
 RETRO_API void retro_deinit(void) {
@@ -155,18 +158,27 @@ RETRO_API void retro_run(void) {
   session->playSound();
 }
 
-RETRO_API size_t retro_serialize_size(void) { return 0; }
-
-RETRO_API bool retro_serialize(void* data, size_t size) {
-  (void)data;
-  (void)size;
-  return false;
+// The bytes a save state of the loaded cartridge takes, the same from load to unload; none with
+// no cartridge.
+RETRO_API size_t retro_serialize_size(void) {
+  return session ? SaveState::size(*session->machine) : 0u;
 }
 
+// The machine's state, written into the frontend's buffer. A buffer shorter than
+// retro_serialize_size() is refused.
+RETRO_API bool retro_serialize(void* data, size_t size) {
+  if (!session || data == nullptr) return false;
+  return SaveState::save(*session->machine,
+                         std::span<std::uint8_t>(static_cast<std::uint8_t*>(data), size));
+}
+
+// A state retro_serialize wrote for this cartridge, put back into the machine: the game carries
+// on from the cycle it was saved at, and the save and work-RAM buffers hold the state's. Bytes
+// that are not such a state are refused, and the game carries on as it was.
 RETRO_API bool retro_unserialize(const void* data, size_t size) {
-  (void)data;
-  (void)size;
-  return false;
+  if (!session || data == nullptr) return false;
+  return session->loadState(
+      std::span<const std::uint8_t>(static_cast<const std::uint8_t*>(data), size));
 }
 
 // Turns every cheat off: the cartridge's ROM gets back each byte a Game Genie code replaced.

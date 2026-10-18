@@ -43,6 +43,7 @@ add_library(snaggletooth_libretro MODULE
   src/memory_map.cpp
   src/options.cpp
   src/picture.cpp
+  src/save_state.cpp
   src/session.cpp
   src/sound.cpp
   src/work_ram.cpp
@@ -127,6 +128,7 @@ if(SNAGGLETOOTH_LIBRETRO_BUILD_TESTS)
     tests/work_ram_test.cpp
     tests/cheats_test.cpp
     tests/core_info_test.cpp
+    tests/save_state_test.cpp
   )
   target_compile_features(snaggletooth_libretro_tests PRIVATE cxx_std_20)
   set_target_properties(snaggletooth_libretro_tests PROPERTIES CXX_EXTENSIONS OFF)
