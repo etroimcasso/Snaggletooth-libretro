@@ -2,7 +2,7 @@
 // takes, the picture's aspect, the region the console runs in, and the threads the machine runs
 // its sound and picture on.
 //
-// A thread switch is checked two ways. The process's own threads are counted, since the machine
+// A thread switch is checked two ways. The threads the core runs are counted, since the machine
 // keeps each thread from its first call until it is destroyed; and a run that switches threads
 // every few frames hands over the same pictures, sound and save as a run that never switches.
 
@@ -200,16 +200,39 @@ std::vector<std::uint8_t> soundCartridge() {
   return rom;
 }
 
-// The threads this process runs, the core's among them.
+// The threads the core runs. On Windows they are the process's threads that started at an address
+// inside the core module: the C runtime is linked into the module, so a thread the machine makes
+// starts in the module's own thread-start code, while the runtime's and the system's helper
+// threads start in their own images. On macOS and Linux the process's threads are counted; the
+// core's are the only ones that come and go.
 std::size_t threadsRunning() {
 #ifdef _WIN32
+  using QueryThread = LONG(NTAPI*)(HANDLE, int, void*, ULONG, ULONG*);
+  constexpr int kWin32StartAddress = 9;  // ThreadQuerySetWin32StartAddress
+  const HMODULE core = GetModuleHandleA(SNAGGLETOOTH_LIBRETRO_PATH);
+  const auto query = reinterpret_cast<QueryThread>(
+      GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "NtQueryInformationThread"));
+  if (core == nullptr || query == nullptr) return 0;
+  const auto base = reinterpret_cast<const std::uint8_t*>(core);
+  const auto dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(base);
+  const auto headers = reinterpret_cast<const IMAGE_NT_HEADERS*>(base + dos->e_lfanew);
+  const std::uint8_t* const end = base + headers->OptionalHeader.SizeOfImage;
   const HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
   if (snapshot == INVALID_HANDLE_VALUE) return 0;
   std::size_t count = 0;
   THREADENTRY32 entry{};
   entry.dwSize = sizeof(entry);
   for (BOOL more = Thread32First(snapshot, &entry); more; more = Thread32Next(snapshot, &entry)) {
-    if (entry.th32OwnerProcessID == GetCurrentProcessId()) ++count;
+    if (entry.th32OwnerProcessID != GetCurrentProcessId()) continue;
+    const HANDLE thread = OpenThread(THREAD_QUERY_INFORMATION, FALSE, entry.th32ThreadID);
+    if (thread == nullptr) continue;
+    void* start = nullptr;
+    ULONG written = 0;
+    if (query(thread, kWin32StartAddress, &start, sizeof(start), &written) == 0) {
+      const auto at = static_cast<const std::uint8_t*>(start);
+      if (at >= base && at < end) ++count;
+    }
+    CloseHandle(thread);
   }
   CloseHandle(snapshot);
   return count;
