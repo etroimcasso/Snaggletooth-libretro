@@ -6,7 +6,7 @@ corename = "Snaggletooth"
 supported_extensions = "sfc|smc|swc|fig"
 license = "MIT"
 permissions = ""
-display_version = "0.0.1"
+display_version = "0.1.0"
 
 # Hardware Information
 manufacturer = "Nintendo"

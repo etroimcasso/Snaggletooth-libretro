@@ -14,13 +14,14 @@ library runs.
 > cartridge draws, plays its sound and passes it the two players' controllers, one console frame
 > at a time; a game's battery-backed save is kept in the frontend's save file, and the frontend's
 > save states, rewind, run-ahead and netplay take the console's whole state at any frame.
-> Releases come next. The table below shows what is done.
+> The table below shows what is done.
 
 ## Contents
 
 - [Status](#status)
-- [Building](#building)
+- [Download](#download)
 - [Installing](#installing)
+- [Building](#building)
 - [Testing](#testing)
 - [License](#license)
 
@@ -39,8 +40,43 @@ library runs.
 | Core information | Done — `snaggletooth_libretro.info`: the core's name, system, extensions and the libretro features it offers, as RetroArch lists them before the core loads |
 | Save states | Done — the console's whole state in Snaggletooth's own byte form, the same size from the moment a cartridge loads and the same bytes on every platform, so a state saved on one computer loads on another; a loaded state puts the game back on the cycle it was saved at, and the pictures and sound that follow are the ones that followed the save, which the frontend's rewind, run-ahead and netplay rely on. Under Weave, the first picture of an interlaced game after a load keeps the other field's lines from the picture shown before it, until the next field replaces them |
 | Core options | Done — Video › Interlaced Picture (Weave, Bob or Off) and Aspect Ratio (Square Pixels or 4:3); System › Region (Auto, NTSC or PAL, applied when a cartridge loads), Audio Thread and Picture Thread (the console's sound and picture each run on a thread of their own, switched while a game runs; both off by default, for a computer that cannot hold a game at 50 or 60 frames a second) |
-| Releases | Not started |
+| Releases | Done — an archive per platform on the [Releases](https://github.com/etroimcasso/Snaggletooth-libretro/releases) page, holding the core, its info file and the licenses |
 | Official libretro core | Not started |
+
+## Download
+
+The [latest release](https://github.com/etroimcasso/Snaggletooth-libretro/releases/latest) has an
+archive for each platform the core is built on:
+
+| Platform | Archive |
+|---|---|
+| Linux x64 | `snaggletooth_libretro-linux-x64.zip` |
+| Linux ARM64 | `snaggletooth_libretro-linux-arm64.zip` |
+| macOS (Apple silicon) | `snaggletooth_libretro-macos-arm64.zip` |
+| Windows x64 | `snaggletooth_libretro-windows-x64.zip` |
+| Windows ARM64 | `snaggletooth_libretro-windows-arm64.zip` |
+
+Each archive unpacks to one folder holding the core (`snaggletooth_libretro.so`, `.dylib` or
+`.dll`), `snaggletooth_libretro.info`, the core's `LICENSE` and Snaggletooth's as
+`LICENSE.Snaggletooth`. The core carries its own C and C++ runtimes, so it needs nothing
+installed beside the frontend. The release notes name the Snaggletooth commit the core is built
+on; the core's own version is the release's.
+
+## Installing
+
+Copy the core into RetroArch's cores directory and `snaggletooth_libretro.info` into its core info
+directory, which is a directory of its own; RetroArch's Settings › Directory names both (Cores,
+Core Info). The info file is what RetroArch shows under Information › Core Information and what
+it lists the core by when choosing one for a cartridge: Nintendo - SNES / SFC (Snaggletooth). A
+build leaves the [info file](src/snaggletooth_libretro.info) beside the core, so a build installs
+the same way as a release.
+
+On macOS, a dylib downloaded in a browser carries the quarantine attribute, and the system refuses
+to load it into RetroArch until the attribute is cleared:
+
+```sh
+xattr -d com.apple.quarantine snaggletooth_libretro.dylib
+```
 
 ## Building
 
@@ -62,15 +98,6 @@ Keep `--config Release`: the Visual Studio generator builds Debug without it, wh
 configure step said. A Release build is optimized, drops code the core never reaches and exports
 only the libretro entry points.
 
-## Installing
-
-A build leaves [`snaggletooth_libretro.info`](src/snaggletooth_libretro.info) beside the core. Copy
-the core into RetroArch's cores directory and the info file into its core info directory, which
-is a directory of its own; RetroArch's Settings › Directory names both (Cores, Core Info). The
-info file is what RetroArch shows under Information › Core
-Information and what it lists the core by when choosing one for a cartridge: Nintendo - SNES / SFC
-(Snaggletooth).
-
 ## Testing
 
 ```sh
@@ -78,7 +105,9 @@ ctest --test-dir build -C Release
 ```
 
 The suite loads the built core the way a frontend does and calls the entry points it exports, so
-every case runs against the binary that ships. GoogleTest 1.14.0 is fetched at configure time;
+every case runs against the binary that ships. Its last case packages the built core with
+[`scripts/package.sh`](scripts/package.sh) (`package.ps1` on Windows), the script that makes a
+release archive, and checks the archive it made. GoogleTest 1.14.0 is fetched at configure time;
 `-DSNAGGLETOOTH_LIBRETRO_BUILD_TESTS=OFF` leaves the suite out.
 
 ## License
