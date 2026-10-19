@@ -618,7 +618,11 @@ TEST(Options, TheMachineRunsOnTheThreadsTheOptionsChoose) {
   Core core(seen);
   ASSERT_TRUE(core.loaded());
   const std::size_t before = threadsRunning();
+#ifndef _WIN32
+  // The process's threads are counted here, the frontend's among them; on Windows the count is
+  // the core's own, none until a machine thread is made.
   ASSERT_GT(before, 0u);
+#endif
   ASSERT_TRUE(core.load(soundCartridge()));
   core.run(2u);
   // Both the picture and the sound on the frontend's thread by default.
