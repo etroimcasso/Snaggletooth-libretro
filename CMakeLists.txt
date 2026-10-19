@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(SnaggletoothLibretro VERSION 0.0.1 LANGUAGES CXX)
+project(SnaggletoothLibretro VERSION 0.1.0 LANGUAGES CXX)
 
 # A build is optimized by default: an empty CMAKE_BUILD_TYPE (CMake's default when nothing
 # supplies one) would produce an unoptimized, unstripped core. Multi-config generators
@@ -16,6 +16,37 @@ if(CCACHE_PROGRAM)
 endif()
 
 option(SNAGGLETOOTH_LIBRETRO_BUILD_TESTS "Build the test suite" ON)
+
+# The platform a release archive is named for: <os>-<arch>, one of linux-x64, linux-arm64,
+# macos-arm64, windows-x64 and windows-arm64. Under Visual Studio the architecture is the
+# generator's platform, which the configure line selects.
+if(WIN32)
+  set(_os windows)
+elseif(APPLE)
+  set(_os macos)
+else()
+  set(_os linux)
+endif()
+if(CMAKE_GENERATOR_PLATFORM)
+  string(TOLOWER "${CMAKE_GENERATOR_PLATFORM}" _arch)
+else()
+  string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" _arch)
+endif()
+if(_arch MATCHES "^(x64|amd64|x86_64)$")
+  set(_arch x64)
+elseif(_arch MATCHES "^(arm64|aarch64)$")
+  set(_arch arm64)
+endif()
+set(SNAGGLETOOTH_LIBRETRO_PLATFORM "${_os}-${_arch}")
+unset(_os)
+unset(_arch)
+
+# The module carries its C and C++ runtimes with it. On Windows the runtime is linked statically,
+# so the DLL loads on a machine without the Visual C++ redistributable; set before the library is
+# added so its objects and GoogleTest's agree with the module's. On Linux the module links
+# libstdc++ and libgcc statically (below), so it loads on a system whose libstdc++ is older than
+# the one it was built against.
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 # The core is a shared module the frontend loads, and the library is a static archive linked
 # into it, so the library's objects are built position-independent. Every symbol is hidden
@@ -66,6 +97,9 @@ set_target_properties(snaggletooth_libretro PROPERTIES
 if(APPLE)
   set_target_properties(snaggletooth_libretro PROPERTIES SUFFIX ".dylib")
 endif()
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  target_link_options(snaggletooth_libretro PRIVATE -static-libstdc++ -static-libgcc)
+endif()
 
 # The core's info file sits beside the module in the build tree, so the directory a build
 # produces holds both files a frontend installs. It is copied on every build.
@@ -108,8 +142,9 @@ if(SNAGGLETOOTH_LIBRETRO_BUILD_TESTS)
     URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip
     DOWNLOAD_EXTRACT_TIMESTAMP TRUE
   )
-  # Keep GoogleTest on the same CRT as the core on Windows.
-  set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+  # GoogleTest takes the runtime library the project sets above, the same static one as the core.
+  set(gtest_force_shared_crt OFF CACHE BOOL "" FORCE)
+  set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
   FetchContent_MakeAvailable(googletest)
 
   # The suite drives the built core the way a frontend does: it loads the module at run time
@@ -157,4 +192,30 @@ if(SNAGGLETOOTH_LIBRETRO_BUILD_TESTS)
 
   include(GoogleTest)
   gtest_discover_tests(snaggletooth_libretro_tests DISCOVERY_TIMEOUT 60)
+
+  # The release archive, made from the built module by the script the release workflow runs and
+  # proved by it: one folder named for the asset, the four files it ships, the module and the info
+  # file byte for byte the build's, and the module carrying its own runtime.
+  set(_asset snaggletooth_libretro-${SNAGGLETOOTH_LIBRETRO_PLATFORM})
+  set(_package_dir ${CMAKE_CURRENT_BINARY_DIR}/package)
+  if(WIN32)
+    add_test(NAME Package
+      COMMAND powershell -NoProfile -ExecutionPolicy Bypass
+        -File ${CMAKE_CURRENT_SOURCE_DIR}/scripts/package.ps1
+        -Module $<TARGET_FILE:snaggletooth_libretro>
+        -WorkDir ${_package_dir}
+        -Output ${_package_dir}/${_asset}.zip
+        -Asset ${_asset}
+    )
+  else()
+    add_test(NAME Package
+      COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/scripts/package.sh
+        $<TARGET_FILE:snaggletooth_libretro>
+        ${_package_dir}
+        ${_package_dir}/${_asset}.zip
+        ${_asset}
+    )
+  endif()
+  unset(_asset)
+  unset(_package_dir)
 endif()
