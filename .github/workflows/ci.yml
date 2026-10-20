@@ -11,8 +11,8 @@ on:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
-# Checkout takes the Snaggletooth submodule itself and stops there: the library's own
-# SDL submodule serves its player, which a parent build leaves unconfigured.
+# Checkout takes the Snaggletooth submodule and the SDL submodule inside it: the core builds
+# SDL from that copy for the GPU picture.
 
 jobs:
 
@@ -25,7 +25,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           clean: false
-          submodules: true
+          submodules: recursive
 
       - name: Configure
         run: |
@@ -60,7 +60,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          submodules: true
+          submodules: recursive
 
       - name: Configure
         shell: powershell
@@ -100,7 +100,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           clean: false
-          submodules: true
+          submodules: recursive
 
       - name: Configure
         run: |
@@ -137,7 +137,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           clean: false
-          submodules: true
+          submodules: recursive
 
       - name: Configure
         run: |
@@ -173,7 +173,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          submodules: true
+          submodules: recursive
 
       - name: Configure
         shell: powershell
