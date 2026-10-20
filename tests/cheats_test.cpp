@@ -135,6 +135,13 @@ struct Frontend {
 
 Frontend* frontend = nullptr;
 
+// The message the core sends at load on a computer whose graphics card it cannot draw on. The
+// GPU picture's cases hold it (gpu_picture_test.cpp); this file's cases count the messages the
+// cartridge and the player's actions make, so the frontend sets it aside.
+bool isGpuFallBack(std::string_view text) {
+  return text.starts_with("Snaggletooth cannot draw on the GPU here");
+}
+
 bool environment(unsigned command, void* data) {
   switch (command) {
     case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT:
@@ -143,7 +150,9 @@ bool environment(unsigned command, void* data) {
       *static_cast<unsigned*>(data) = 1u;
       return true;
     case RETRO_ENVIRONMENT_SET_MESSAGE_EXT:
-      frontend->messages.emplace_back(static_cast<const retro_message_ext*>(data)->msg);
+      if (!isGpuFallBack(static_cast<const retro_message_ext*>(data)->msg)) {
+        frontend->messages.emplace_back(static_cast<const retro_message_ext*>(data)->msg);
+      }
       return true;
     case RETRO_ENVIRONMENT_GET_VARIABLE: {
       auto* variable = static_cast<retro_variable*>(data);

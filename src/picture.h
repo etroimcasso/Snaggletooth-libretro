@@ -1,8 +1,12 @@
 // The picture as the frontend is handed it: its shapes and aspect, how a game's interlaced
-// fields are shown, and the frame observer that turns each finished frame into XRGB8888 pixels.
+// fields are shown, and the two observers that turn each finished frame into XRGB8888 pixels,
+// one from the frame the machine drew on the processor and one from the frame it drew on the GPU.
 
 #pragma once
 
+#include "gpu_device.h"
+
+#include "snaggletooth/snes/ppu_timeline.h"
 #include "snaggletooth/snes/snes.h"
 
 #include <cstddef>
@@ -31,28 +35,37 @@ float aspectOf(unsigned lines, Aspect aspect);
 // shows each field at full height on its own, and Off shows each field as it is drawn.
 enum class Interlace : std::uint8_t { Weave, Bob, Off };
 
-// Thrown by the frame observer as the machine finishes a frame. The machine returns from
-// run() through it with the beam where the frame's vertical blank begins, ahead of the blank's
+// Thrown by either observer as the machine finishes a frame. The machine returns from run()
+// through it with the beam where the frame's vertical blank begins, ahead of the blank's
 // interrupt handler and controller read, which is where a frontend's frame ends; the next run()
 // spends the rest of the interrupted budget before its own.
 struct FrameFinished {};
 
-// The machine's frame observer. It turns each finished frame into the picture the frontend is
-// handed, then stops the run there. The picture is XRGB8888, one 32-bit 0x00RRGGBB word a
-// pixel, row-major from the top line, in a buffer sized once for the largest picture, so no
-// frame allocates. A frame the cartridge did not interlace, or any frame under Off, is the
-// picture as drawn. A field of an interlaced run is placed in the full-height picture at the
-// rows of its parity, line i at row 2i + parity: under Weave the other parity's rows keep the
-// last field of that parity, and under Bob this field fills them too. A picture of a new shape
-// starts black.
-class Screen final : public snaggletooth::FrameObserver {
+// The picture the frontend is handed: XRGB8888, one 32-bit 0x00RRGGBB word a pixel, row-major
+// from the top line, in a buffer sized once for the largest picture, so no frame allocates.
+//
+// A frame the cartridge did not interlace, or any frame under Off, is the picture as drawn. A
+// field of an interlaced run is placed in the full-height picture at the rows of its parity, line
+// i at row 2i + parity: under Weave the other parity's rows keep the last field of that parity,
+// and under Bob this field fills them too. A picture of a new shape starts black. The placement
+// is the same whichever way the frame was drawn, so the picture does not change when the drawing
+// moves between the processor and the GPU.
+class Picture {
  public:
-  void frame(const snaggletooth::VideoFrame& field) override;
+  // Where a field's lines are written: line i at `first + i * pitch`.
+  struct Rows {
+    std::uint32_t* first;
+    std::size_t pitch;
+  };
 
-  // The machine whose PPU says whether the run is interlaced.
-  const snaggletooth::Snes* machine = nullptr;
+  // Makes the picture ready for a field `fieldWidth` across and `fieldLines` down, of the given
+  // parity, and answers where its lines go.
+  Rows place(unsigned fieldWidth, unsigned fieldLines, bool interlaced, unsigned parity);
+  // Completes the field place() made ready for, once its lines are written: under Bob each line
+  // is copied onto the other parity's row.
+  void finish();
+
   Interlace mode = Interlace::Weave;
-
   std::vector<std::uint32_t> pixels = std::vector<std::uint32_t>(
       static_cast<std::size_t>(kMaxWidth) * kMaxHeight, 0u);
   unsigned width = kBaseWidth;
@@ -60,8 +73,38 @@ class Screen final : public snaggletooth::FrameObserver {
   unsigned lines = kBaseHeight;  // the lines the console drew the last frame with
 
  private:
-  [[nodiscard]] std::uint32_t* rowAt(unsigned row);
-  void convertLine(const snaggletooth::VideoFrame& field, unsigned line, unsigned row);
+  bool bob_ = false;     // the field being placed is copied onto the other parity's rows
+  unsigned parity_ = 0;  // the field's parity
+};
+
+// The machine's frame observer, for a machine drawing on the processor: it converts each
+// finished frame's RGBA bytes into the picture, then stops the run there.
+class Screen final : public snaggletooth::FrameObserver {
+ public:
+  explicit Screen(Picture& into) : into_(into) {}
+  void frame(const snaggletooth::VideoFrame& field) override;
+
+  // The machine whose PPU says whether the run is interlaced.
+  const snaggletooth::Snes* machine = nullptr;
+
+ private:
+  Picture& into_;
+};
+
+// The machine's timeline observer, for a machine drawing on the GPU: the device has drawn the
+// frame by the time the machine reports it, and the observer reads the frame back from the
+// device into the picture, then stops the run there.
+class GpuScreen final : public snaggletooth::PpuTimelineObserver {
+ public:
+  explicit GpuScreen(Picture& into) : into_(into) {}
+  void frame(const snaggletooth::PpuTimeline& timeline) override;
+
+  // The machine whose PPU says whether the run is interlaced, and the device it draws on.
+  const snaggletooth::Snes* machine = nullptr;
+  GpuDevice* device = nullptr;
+
+ private:
+  Picture& into_;
 };
 
 }  // namespace snaggletooth_libretro

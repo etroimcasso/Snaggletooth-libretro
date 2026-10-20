@@ -72,14 +72,16 @@ retro_core_option_v2_definition optionDefinitions[] = {
     {.key = kPictureThreadKey,
      .desc = "Picture Thread",
      .desc_categorized = "Picture Thread",
-     .info = "Draws the console's picture on a thread of its own beside the core's. The picture, "
-             "the sound and the game are the same either way. Enable it if a game cannot hold "
-             "50/60fps: a host whose cores are each too slow to run the whole console keeps up "
-             "by sharing the work.",
+     .info = "Where the console's picture is drawn. GPU draws it on the graphics card with "
+             "Snaggletooth's own shader, which leaves the processor almost nothing to draw; "
+             "Enabled draws it on a thread of its own beside the core's; Disabled draws it on the "
+             "core's thread. The picture, the sound and the game are the same each way. On a "
+             "computer whose graphics card the core cannot use, the picture is drawn on the "
+             "processor and the core says so.",
      .info_categorized = nullptr,
      .category_key = "system",
-     .values = {{"disabled", nullptr}, {"enabled", nullptr}, {nullptr, nullptr}},
-     .default_value = "disabled"},
+     .values = {{"disabled", nullptr}, {"enabled", nullptr}, {"gpu", "GPU"}, {nullptr, nullptr}},
+     .default_value = "gpu"},
     {},
 };
 
@@ -182,8 +184,12 @@ std::optional<snaggletooth::Region> regionOption() {
 }
 
 MachineThreads threadsOption() {
-  return MachineThreads{.audio = switchedOn(kAudioThreadKey, false),
-                        .picture = switchedOn(kPictureThreadKey, false)};
+  PictureDrawing picture = PictureDrawing::Gpu;
+  if (const char* value = valueOf(kPictureThreadKey); value != nullptr) {
+    if (std::string_view(value) == "enabled") picture = PictureDrawing::OwnThread;
+    if (std::string_view(value) == "disabled") picture = PictureDrawing::CallingThread;
+  }
+  return MachineThreads{.audio = switchedOn(kAudioThreadKey, false), .picture = picture};
 }
 
 }  // namespace snaggletooth_libretro

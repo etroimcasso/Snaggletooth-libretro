@@ -6,20 +6,45 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <stdexcept>
 #include <utility>
 
 namespace snaggletooth_libretro {
 
+namespace {
+
+// The device a machine on `threads` draws on: `gpu` where the picture is drawn on the GPU.
+GpuDevice* drawingOn(MachineThreads threads, GpuDevice* gpu) {
+  return threads.picture == PictureDrawing::Gpu ? gpu : nullptr;
+}
+
+}  // namespace
+
 Session::Session(std::vector<std::uint8_t> image, snaggletooth::Region region,
-                 MachineThreads threads)
+                 MachineThreads asked, GpuDevice* gpu)
     : rom(std::move(image)),
+      threads(asked),
+      device(drawingOn(asked, gpu)),
       config{.rom = rom,
              .region = region,
-             .apuThread = threads.audio,
-             .ppuThread = threads.picture},
+             .apuThread = asked.audio,
+             .ppuThread = asked.picture == PictureDrawing::OwnThread,
+             .gpuPpu = device},
       machine(std::make_unique<snaggletooth::Snes>(config)) {
+  watch();
+}
+
+void Session::watch() {
   screen.machine = machine.get();
-  machine->setFrameObserver(&screen);
+  gpuScreen.machine = machine.get();
+  gpuScreen.device = device;
+  // A frame observer has the processor draw the frame too, so a machine drawing on the GPU is
+  // given only the timeline observer.
+  if (device != nullptr) {
+    machine->setPpuTimelineObserver(&gpuScreen);
+  } else {
+    machine->setFrameObserver(&screen);
+  }
 }
 
 void Session::runFrame() {
@@ -34,22 +59,22 @@ void Session::runFrame() {
 }
 
 void Session::showPicture() {
-  if (screen.width != shownWidth || screen.height != shownHeight || screen.lines != shownLines ||
-      aspect != shownAspect) {
-    shownWidth = screen.width;
-    shownHeight = screen.height;
-    shownLines = screen.lines;
+  if (picture.width != shownWidth || picture.height != shownHeight ||
+      picture.lines != shownLines || aspect != shownAspect) {
+    shownWidth = picture.width;
+    shownHeight = picture.height;
+    shownLines = picture.lines;
     shownAspect = aspect;
-    retro_game_geometry geometry{.base_width = screen.width,
-                                 .base_height = screen.height,
+    retro_game_geometry geometry{.base_width = picture.width,
+                                 .base_height = picture.height,
                                  .max_width = kMaxWidth,
                                  .max_height = kMaxHeight,
-                                 .aspect_ratio = aspectOf(screen.lines, aspect)};
+                                 .aspect_ratio = aspectOf(picture.lines, aspect)};
     if (environment != nullptr) environment(RETRO_ENVIRONMENT_SET_GEOMETRY, &geometry);
   }
   if (videoRefresh != nullptr) {
-    videoRefresh(screen.pixels.data(), screen.width, screen.height,
-                 static_cast<std::size_t>(screen.width) * sizeof(std::uint32_t));
+    videoRefresh(picture.pixels.data(), picture.width, picture.height,
+                 static_cast<std::size_t>(picture.width) * sizeof(std::uint32_t));
   }
 }
 
@@ -61,17 +86,31 @@ void Session::playSound() {
   }
 }
 
-void Session::runOn(MachineThreads threads) {
-  if (threads == MachineThreads{.audio = config.apuThread, .picture = config.ppuThread}) return;
+void Session::runOn(MachineThreads asked, GpuDevice* gpu) {
+  GpuDevice* const drawOn = drawingOn(asked, gpu);
+  if (asked == threads && drawOn == device) return;
   // A machine's state is a quarter of a megabyte, so the copy is made on the heap. The running
   // machine stops its threads before the new one starts its own.
   const auto state = std::make_unique<snaggletooth::SnesState>(machine->state());
-  config.apuThread = threads.audio;
-  config.ppuThread = threads.picture;
+  config.apuThread = asked.audio;
+  config.ppuThread = asked.picture == PictureDrawing::OwnThread;
+  config.gpuPpu = drawOn;
   machine.reset();
-  machine = std::make_unique<snaggletooth::Snes>(config);
-  screen.machine = machine.get();
-  machine->setFrameObserver(&screen);
+  try {
+    machine = std::make_unique<snaggletooth::Snes>(config);
+  } catch (const std::runtime_error&) {
+    threads = MachineThreads{.audio = asked.audio, .picture = PictureDrawing::CallingThread};
+    device = nullptr;
+    config.ppuThread = false;
+    config.gpuPpu = nullptr;
+    machine = std::make_unique<snaggletooth::Snes>(config);
+    watch();
+    machine->restore(*state);
+    throw;
+  }
+  threads = asked;
+  device = drawOn;
+  watch();
   machine->restore(*state);
 }
 

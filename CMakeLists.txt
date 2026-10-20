@@ -12,6 +12,7 @@ endif()
 # Route compilation through ccache when it is installed. A no-op when absent.
 find_program(CCACHE_PROGRAM ccache)
 if(CCACHE_PROGRAM)
+  set(CMAKE_C_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
   set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
 endif()
 
@@ -53,14 +54,50 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 # unless it is declared otherwise; the libretro entry points are declared RETRO_API, which
 # exports them, and they are the module's only exports. Each function and datum gets its own
 # section so the final link can drop whatever the core never reaches. These are set before
-# the library is added so they reach its objects too; they change code generation only, never
-# the library's warnings.
+# the library and SDL are added so they reach their objects too, SDL's C and Objective-C among
+# them; they change code generation only, never either one's warnings.
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+set(CMAKE_C_VISIBILITY_PRESET hidden)
 set(CMAKE_CXX_VISIBILITY_PRESET hidden)
+set(CMAKE_OBJC_VISIBILITY_PRESET hidden)
 set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
 if(NOT MSVC)
   add_compile_options(-ffunction-sections -fdata-sections)
 endif()
+
+# The core draws the picture on a GPU through SDL's GPU API: Metal on macOS, Direct3D 12 on
+# Windows, Vulkan on Linux. SDL is built from the copy Snaggletooth pins, as a static library
+# linked into the module, with only the video and GPU subsystems: the core opens no window,
+# plays no sound and reads no device, and the offscreen video driver is the only one it needs.
+# It is added before the library so SDL3::SDL3 exists when the library looks for it.
+set(SDL_SHARED       OFF CACHE BOOL "" FORCE)
+set(SDL_STATIC       ON  CACHE BOOL "" FORCE)
+set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
+set(SDL_AUDIO        OFF CACHE BOOL "" FORCE)
+set(SDL_VIDEO        ON  CACHE BOOL "" FORCE)
+set(SDL_GPU          ON  CACHE BOOL "" FORCE)
+set(SDL_RENDER       OFF CACHE BOOL "" FORCE)
+set(SDL_CAMERA       OFF CACHE BOOL "" FORCE)
+set(SDL_HAPTIC       OFF CACHE BOOL "" FORCE)
+set(SDL_JOYSTICK     OFF CACHE BOOL "" FORCE)
+set(SDL_HIDAPI       OFF CACHE BOOL "" FORCE)
+set(SDL_POWER        OFF CACHE BOOL "" FORCE)
+set(SDL_SENSOR       OFF CACHE BOOL "" FORCE)
+set(SDL_DIALOG       OFF CACHE BOOL "" FORCE)
+set(SDL_OPENGL       OFF CACHE BOOL "" FORCE)
+set(SDL_OPENGLES     OFF CACHE BOOL "" FORCE)
+set(SDL_OFFSCREEN    ON  CACHE BOOL "" FORCE)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  set(SDL_X11        OFF CACHE BOOL "" FORCE)
+  set(SDL_WAYLAND    OFF CACHE BOOL "" FORCE)
+  set(SDL_KMSDRM     OFF CACHE BOOL "" FORCE)
+  # SDL stops a Unix configure that finds no window system unless the build says it needs none.
+  set(SDL_UNIX_CONSOLE_BUILD ON CACHE BOOL "" FORCE)
+endif()
+add_subdirectory(third_party/snaggletooth/third_party/sdl EXCLUDE_FROM_ALL SYSTEM)
+# SDL marks its functions for export; an empty SDL_DECLSPEC leaves them hidden like the rest of
+# the module, so the libretro entry points stay its only exports.
+target_compile_definitions(SDL3-static PRIVATE "SDL_DECLSPEC=")
 
 add_subdirectory(third_party/snaggletooth EXCLUDE_FROM_ALL)
 
@@ -70,6 +107,7 @@ add_library(snaggletooth_libretro MODULE
   src/cheats.cpp
   src/controllers.cpp
   src/frontend.cpp
+  src/gpu_device.cpp
   src/libretro.cpp
   src/memory_map.cpp
   src/options.cpp
@@ -80,13 +118,17 @@ add_library(snaggletooth_libretro MODULE
   src/work_ram.cpp
 )
 target_compile_features(snaggletooth_libretro PRIVATE cxx_std_20)
+# SDL_MAIN_HANDLED keeps SDL's headers from renaming main: the core is a module in the
+# frontend's process, and it calls SDL_SetMainReady before starting SDL.
 target_compile_definitions(snaggletooth_libretro PRIVATE
   SNAGGLETOOTH_LIBRETRO_VERSION="${PROJECT_VERSION}"
+  SDL_MAIN_HANDLED
+  "SDL_DECLSPEC="
 )
 target_include_directories(snaggletooth_libretro SYSTEM PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/third_party/libretro
 )
-target_link_libraries(snaggletooth_libretro PRIVATE snaggletooth::snaggletooth)
+target_link_libraries(snaggletooth_libretro PRIVATE snaggletooth::snaggletooth SDL3::SDL3)
 # libretro names a core <name>_libretro.<ext> with no "lib" prefix on any platform, and the
 # extension is the platform's shared-library one: .dylib on Apple, where CMake would give a
 # module .so.
@@ -164,6 +206,7 @@ if(SNAGGLETOOTH_LIBRETRO_BUILD_TESTS)
     tests/cheats_test.cpp
     tests/core_info_test.cpp
     tests/save_state_test.cpp
+    tests/gpu_picture_test.cpp
   )
   target_compile_features(snaggletooth_libretro_tests PRIVATE cxx_std_20)
   set_target_properties(snaggletooth_libretro_tests PROPERTIES CXX_EXTENSIONS OFF)
@@ -184,6 +227,10 @@ if(SNAGGLETOOTH_LIBRETRO_BUILD_TESTS)
     ${CMAKE_DL_LIBS}
   )
   add_dependencies(snaggletooth_libretro_tests snaggletooth_libretro snaggletooth_libretro_info)
+  # On macOS a case messages NSCursor after the core is closed, as a frontend's video setup does.
+  if(APPLE)
+    target_link_libraries(snaggletooth_libretro_tests PRIVATE "-framework AppKit")
+  endif()
   if(MSVC)
     target_compile_options(snaggletooth_libretro_tests PRIVATE /W4 /WX)
   else()

@@ -1,11 +1,12 @@
-// A loaded cartridge and everything that runs it: the machine, the picture it draws into, the
-// sound it is drained into, the save and work RAM the frontend keeps with the map that places
+// A loaded cartridge and everything that runs it: the machine, the picture it draws into and
+// where it draws it, the sound it is drained into, the save and work RAM the frontend keeps with the map that places
 // them on the bus, the machine's saved states, and the picture's shape as the frontend was last
 // told it.
 
 #pragma once
 
 #include "battery_save.h"
+#include "gpu_device.h"
 #include "memory_map.h"
 #include "picture.h"
 #include "save_state.h"
@@ -21,12 +22,16 @@
 
 namespace snaggletooth_libretro {
 
-// Where the machine runs its sound unit's work and its picture's: on the thread the frontend
-// calls the core on, or each on a thread of its own beside it. The sound, the picture and the
-// state are the same either way.
+// Where the machine draws the console's picture: on the thread the frontend calls the core on,
+// on a thread of its own beside it, or on the GPU.
+enum class PictureDrawing : std::uint8_t { CallingThread, OwnThread, Gpu };
+
+// Where the machine runs its sound unit's work, on the frontend's thread or on a thread of its
+// own beside it, and where it draws its picture. The sound, the picture and the state are the
+// same every way.
 struct MachineThreads {
   bool audio = false;
-  bool picture = false;
+  PictureDrawing picture = PictureDrawing::Gpu;
 
   [[nodiscard]] bool operator==(const MachineThreads&) const noexcept = default;
 };
@@ -34,7 +39,11 @@ struct MachineThreads {
 // The machine keeps a pointer to the observer and the session's buffers are handed to the
 // frontend, so a session is built in place and never moved.
 struct Session {
-  Session(std::vector<std::uint8_t> image, snaggletooth::Region region, MachineThreads threads);
+  // The machine is built on the threads asked for, drawing on `gpu` where the picture is drawn
+  // on the GPU; `gpu` is ignored otherwise. A machine that cannot draw on the device throws
+  // std::runtime_error from its constructor, and so does the session.
+  Session(std::vector<std::uint8_t> image, snaggletooth::Region region, MachineThreads asked,
+          GpuDevice* gpu);
   Session(const Session&) = delete;
   Session& operator=(const Session&) = delete;
 
@@ -50,11 +59,13 @@ struct Session {
   // to the frame's end.
   void playSound();
 
-  // Moves the machine's work onto the threads asked for. The machine takes its threads when it
-  // is built, so a change builds a new machine on the same cartridge and restores the running
-  // one's state into it: the game carries on from the cycle it stopped at, with the same pads,
-  // save and work RAM.
-  void runOn(MachineThreads threads);
+  // Moves the machine's work onto the threads asked for, drawing on `gpu` where the picture is
+  // drawn on the GPU. The machine takes its threads and its device when it is built, so a change
+  // builds a new machine on the same cartridge and restores the running one's state into it:
+  // the game carries on from the cycle it stopped at, with the same pads, save, work RAM and
+  // picture. A machine that cannot draw on the device is built drawing on the frontend's thread
+  // instead, the game carried on there, and the machine's std::runtime_error is thrown on.
+  void runOn(MachineThreads asked, GpuDevice* gpu);
 
   // Puts a saved state into the machine (SaveState::load), then copies the machine's save and
   // work RAM into the frontend's buffers, so they hold the state's and the next frame carries
@@ -62,10 +73,17 @@ struct Session {
   // buffers as they were, when the state is refused.
   bool loadState(std::span<const std::uint8_t> bytes);
 
-  // The cartridge image the machine was built from, and the configuration it was built with.
+  // The cartridge image the machine was built from, the configuration it was built with, where
+  // it runs its work, and the device it draws on, if it draws on the GPU.
   std::vector<std::uint8_t> rom;
+  MachineThreads threads;
+  GpuDevice* device = nullptr;
   snaggletooth::SnesConfig config;
-  Screen screen;
+  // The picture the frontend is handed, and the observer that fills it: Screen on the
+  // processor, GpuScreen on the GPU.
+  Picture picture;
+  Screen screen{picture};
+  GpuScreen gpuScreen{picture};
   std::unique_ptr<snaggletooth::Snes> machine;
   BatterySave save{*machine};
   WorkRam workRam{*machine};
@@ -80,6 +98,10 @@ struct Session {
   unsigned shownHeight = kBaseHeight;
   unsigned shownLines = kBaseHeight;
   Aspect shownAspect = Aspect::SquarePixels;
+
+ private:
+  // The observer the machine's drawing calls for set on it.
+  void watch();
 };
 
 }  // namespace snaggletooth_libretro
