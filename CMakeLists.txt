@@ -54,11 +54,12 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 # unless it is declared otherwise; the libretro entry points are declared RETRO_API, which
 # exports them, and they are the module's only exports. Each function and datum gets its own
 # section so the final link can drop whatever the core never reaches. These are set before
-# the library is added so they reach its objects too; they change code generation only, never
-# the library's warnings.
+# the library and SDL are added so they reach their objects too, SDL's C and Objective-C among
+# them; they change code generation only, never either one's warnings.
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_C_VISIBILITY_PRESET hidden)
 set(CMAKE_CXX_VISIBILITY_PRESET hidden)
+set(CMAKE_OBJC_VISIBILITY_PRESET hidden)
 set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
 if(NOT MSVC)
   add_compile_options(-ffunction-sections -fdata-sections)
@@ -224,6 +225,10 @@ if(SNAGGLETOOTH_LIBRETRO_BUILD_TESTS)
     ${CMAKE_DL_LIBS}
   )
   add_dependencies(snaggletooth_libretro_tests snaggletooth_libretro snaggletooth_libretro_info)
+  # On macOS a case messages NSCursor after the core is closed, as a frontend's video setup does.
+  if(APPLE)
+    target_link_libraries(snaggletooth_libretro_tests PRIVATE "-framework AppKit")
+  endif()
   if(MSVC)
     target_compile_options(snaggletooth_libretro_tests PRIVATE /W4 /WX)
   else()

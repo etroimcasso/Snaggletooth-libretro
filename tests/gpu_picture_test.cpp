@@ -1,7 +1,8 @@
 // The picture drawn on the GPU, the Picture Thread option's default: every frame the core hands
 // over is the frame the machine draws on the processor, at every shape and under every interlace
-// option; a state saved while drawing on the processor plays on under the GPU; and where no GPU
-// device opens, the core says so and draws on the processor.
+// option; a state saved while drawing on the processor plays on under the GPU; where no GPU
+// device opens, the core says so and draws on the processor; and on macOS the core stays loaded
+// when a frontend closes it, so the methods SDL adds to Apple's classes stay where they point.
 //
 // What each frame should hold comes from a second machine run here on the processor, with an
 // observer of the suite's own. A case that needs a device skips, saying why, on a computer where
@@ -22,6 +23,12 @@
 #include <map>
 #include <string>
 #include <vector>
+
+#ifdef __APPLE__
+#include <dlfcn.h>
+#include <objc/message.h>
+#include <objc/runtime.h>
+#endif
 
 namespace {
 
@@ -429,6 +436,35 @@ TEST(GpuPicture, AStateSavedOnTheProcessorLoadsUnderTheGpu) {
   for (std::size_t at = 1; at < followed.size(); ++at) {
     EXPECT_TRUE(seen.pictures[at] == followed[at]) << "frame " << at << " after the load";
   }
+}
+
+// A frontend opens the core to read its system information and closes it before it opens the core
+// to run a cartridge, and RetroArch's video setup then messages NSCursor. SDL's Cocoa code adds
+// methods to NSCursor and three other Apple classes as soon as the module is mapped; the core
+// stays mapped through the close, so a message to NSCursor still finds them. Its symbols stay
+// its own: a frontend that finds retro_init across its whole process refuses to load a core.
+TEST(GpuPicture, TheCoreStaysLoadedWhenAFrontendClosesIt) {
+#ifdef __APPLE__
+  const void* inModule = nullptr;
+  {
+    LoadedCore module;
+    ASSERT_TRUE(module.loaded());
+    retro_system_info info{};
+    module.entry<void(retro_system_info*)>("retro_get_system_info")(&info);
+    inModule = info.library_name;
+  }
+  Dl_info where{};
+  EXPECT_NE(dladdr(inModule, &where), 0) << "the module was unloaded when the frontend closed it";
+  EXPECT_EQ(dlsym(RTLD_DEFAULT, "retro_init"), nullptr)
+      << "the core's entry points are visible across the process";
+  Class cursor = objc_getClass("NSCursor");
+  ASSERT_NE(cursor, nullptr);
+  reinterpret_cast<void (*)(id, SEL)>(objc_msgSend)(reinterpret_cast<id>(cursor),
+                                                    sel_registerName("unhide"));
+#else
+  GTEST_SKIP() << "the core keeps itself loaded on macOS alone, where SDL's Cocoa code adds "
+                  "methods to Apple's classes";
+#endif
 }
 
 TEST(GpuPicture, NoGpuDeviceDrawsOnTheProcessorAndSaysSo) {

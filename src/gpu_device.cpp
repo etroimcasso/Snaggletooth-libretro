@@ -53,6 +53,23 @@ constexpr std::size_t kTexelBytes = 16u;
   return static_cast<std::uint32_t>(std::lround(std::clamp(channel, 0.0f, 1.0f) * 255.0f));
 }
 
+#if defined(__APPLE__)
+// SDL's Cocoa code adds Objective-C categories to Apple's classes (NSCursor, NSScreen, NSWindow,
+// NSApplication), and the runtime attaches them as soon as the module is mapped, before any entry
+// point runs. Unmapping the module would leave those classes pointing into memory that is gone,
+// and the frontend's next message to one of them would crash it. So the module keeps itself
+// loaded from the moment it is mapped: a frontend that opens the core only to read its system
+// information and closes it, then opens it again, gets the same module back. The module's
+// symbols stay local: a frontend that finds retro_init across its whole process takes the core
+// for one linked into itself and refuses to load it.
+__attribute__((constructor)) void keepModuleLoaded() {
+  Dl_info self{};
+  if (dladdr(reinterpret_cast<const void*>(&keepModuleLoaded), &self) != 0) {
+    dlopen(self.dli_fname, RTLD_NOW | RTLD_LOCAL | RTLD_NOLOAD | RTLD_NODELETE);
+  }
+}
+#endif
+
 std::unique_ptr<GpuDevice> shared;
 bool looked = false;        // a device has been looked for since the last close
 bool sdlStarted = false;    // SDL is started for the device
@@ -257,15 +274,7 @@ GpuDevice* sharedGpuDevice(std::string& error) {
 #if defined(__APPLE__)
   // SDL offers Metal only under the Cocoa video driver. Cocoa leaves the frontend's application
   // and its delegate as they are, and a process with no application of its own stays out of the
-  // Dock. Cocoa keeps objects of the core's in the process once it starts, so the core's module
-  // stays loaded from here to the process's end: a frontend that closes the core and loads it
-  // again gets the same module back.
-  {
-    Dl_info self{};
-    if (dladdr(reinterpret_cast<const void*>(&sharedGpuDevice), &self) != 0) {
-      dlopen(self.dli_fname, RTLD_NOW | RTLD_NOLOAD | RTLD_NODELETE);
-    }
-  }
+  // Dock.
   SDL_SetHintWithPriority(SDL_HINT_VIDEO_DRIVER, "cocoa", SDL_HINT_OVERRIDE);
   SDL_SetHint(SDL_HINT_MAC_BACKGROUND_APP, "1");
 #else
