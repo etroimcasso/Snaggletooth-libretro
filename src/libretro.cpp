@@ -268,14 +268,15 @@ RETRO_API bool retro_load_game(const struct retro_game_info* game) {
   MachineThreads threads = threadsOption();
   askedThreads = threads;
   GpuDevice* device = deviceFor(threads);
-  try {
-    session = std::make_unique<Session>(rom, region, threads, device);
-  } catch (const std::runtime_error& error) {
-    if (device == nullptr) throw;
-    cannotDrawOnGpu(error.what());
-    threads.picture = PictureDrawing::CallingThread;
-    session = std::make_unique<Session>(rom, region, threads, nullptr);
+  if (device != nullptr) {
+    try {
+      session = std::make_unique<Session>(rom, region, threads, device);
+    } catch (const std::runtime_error& error) {
+      cannotDrawOnGpu(error.what());
+      threads.picture = PictureDrawing::CallingThread;
+    }
   }
+  if (!session) session = std::make_unique<Session>(rom, region, threads, nullptr);
   session->picture.mode = interlaceOption();
   session->aspect = aspectOption();
   session->shownAspect = session->aspect;

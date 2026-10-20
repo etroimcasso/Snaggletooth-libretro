@@ -91,6 +91,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   set(SDL_X11        OFF CACHE BOOL "" FORCE)
   set(SDL_WAYLAND    OFF CACHE BOOL "" FORCE)
   set(SDL_KMSDRM     OFF CACHE BOOL "" FORCE)
+  # SDL stops a Unix configure that finds no window system unless the build says it needs none.
+  set(SDL_UNIX_CONSOLE_BUILD ON CACHE BOOL "" FORCE)
 endif()
 add_subdirectory(third_party/snaggletooth/third_party/sdl EXCLUDE_FROM_ALL SYSTEM)
 # SDL marks its functions for export; an empty SDL_DECLSPEC leaves them hidden like the rest of
