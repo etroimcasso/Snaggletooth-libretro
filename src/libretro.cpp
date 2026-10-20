@@ -5,8 +5,8 @@
 // (cartridge.h), the picture (picture.h), the sound (sound.h), the controller ports
 // (controllers.h), the cartridge's save (battery_save.h), the console's work RAM (work_ram.h)
 // and the map placing both on the bus (memory_map.h), the player's cheat codes (cheats.h), the
-// core options (options.h), the machine's saved states (save_state.h) and the running cartridge
-// (session.h).
+// core options (options.h), the machine's saved states (save_state.h), the graphics card the
+// picture is drawn on (gpu_device.h) and the running cartridge (session.h).
 //
 // A libretro core is one per process, reached through plain functions with no handle, so the
 // running cartridge lives in this file's own state: the session a loaded cartridge runs in,
@@ -18,6 +18,7 @@
 #include "cheats.h"
 #include "controllers.h"
 #include "frontend.h"
+#include "gpu_device.h"
 #include "options.h"
 #include "picture.h"
 #include "save_state.h"
@@ -32,6 +33,7 @@
 #include <cstdint>
 #include <memory>
 #include <span>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -50,6 +52,29 @@ const char* libraryVersion() {
 }
 
 std::unique_ptr<Session> session;
+
+// The thread options as the player last set them, which the running machine follows unless its
+// picture could not be drawn on the GPU.
+MachineThreads askedThreads;
+
+void cannotDrawOnGpu(const std::string& reason) {
+  tellPlayer("Snaggletooth cannot draw on the GPU here (" + reason +
+             "). The picture is drawn on the processor.");
+}
+
+// The device a machine on `threads` draws on: the process's GPU device where the picture is drawn
+// on the GPU. Where no device opens, the player is told and the picture moves to the frontend's
+// thread.
+GpuDevice* deviceFor(MachineThreads& threads) {
+  if (threads.picture != PictureDrawing::Gpu) return nullptr;
+  std::string error;
+  GpuDevice* device = sharedGpuDevice(error);
+  if (device == nullptr) {
+    cannotDrawOnGpu(error);
+    threads.picture = PictureDrawing::CallingThread;
+  }
+  return device;
+}
 
 }  // namespace
 
@@ -92,8 +117,10 @@ RETRO_API void retro_init(void) {
   declareSerializationQuirks();
 }
 
+// The machine goes before the GPU device it draws on.
 RETRO_API void retro_deinit(void) {
   session.reset();
+  closeSharedGpuDevice();
   forgetCheats();
   logPrintf = nullptr;
 }
@@ -138,18 +165,26 @@ RETRO_API void retro_reset(void) {
 // frontend is handed the picture that frame makes, then the sound it made, and its save and
 // work-RAM buffers hold both as the frame left them. A change to the interlace, aspect or thread
 // options takes effect from this frame; a machine rebuilt on other threads is given the ROM
-// patches of the cheats that are on.
+// patches of the cheats that are on. A change to the GPU on a computer where the core cannot draw
+// on it is told to the player once, and the picture is drawn on the frontend's thread.
 RETRO_API void retro_run(void) {
   if (inputPoll != nullptr) inputPoll();
   if (!session) return;
   if (optionsChanged()) {
-    session->screen.mode = interlaceOption();
+    session->picture.mode = interlaceOption();
     session->aspect = aspectOption();
-    const MachineThreads threads = threadsOption();
-    const bool rebuilt = threads != MachineThreads{.audio = session->config.apuThread,
-                                                   .picture = session->config.ppuThread};
-    session->runOn(threads);
-    if (rebuilt) patchRom(*session->machine);
+    MachineThreads threads = threadsOption();
+    if (threads != askedThreads) {
+      askedThreads = threads;
+      GpuDevice* device = deviceFor(threads);
+      const bool rebuilt = threads != session->threads || device != session->device;
+      try {
+        session->runOn(threads, device);
+      } catch (const std::runtime_error& error) {
+        cannotDrawOnGpu(error.what());
+      }
+      if (rebuilt) patchRom(*session->machine);
+    }
   }
   session->save.passToMachine(*session->machine);
   session->workRam.passToMachine(*session->machine);
@@ -200,10 +235,11 @@ RETRO_API void retro_cheat_set(unsigned index, bool enabled, const char* code) {
 // Loads a cartridge from the bytes the frontend read. A copier's header ahead of the image is
 // dropped, the machine is built at the region the Region option names, or under Auto the one
 // the cartridge's header names, and a cartridge whose board carries a coprocessor is refused
-// with a message naming the chip. The machine runs its sound and its picture on the threads the
-// thread options choose. The frontend is told the devices each port takes and the name of every
-// button on them, and where the work RAM and the save sit on the console's bus. The cheats set
-// so far take effect on the new machine.
+// with a message naming the chip. The machine runs its sound and draws its picture where the
+// thread options choose; where the picture cannot be drawn on the GPU, the player is told and it
+// is drawn on the frontend's thread. The frontend is told the devices each port takes and the
+// name of every button on them, and where the work RAM and the save sit on the console's bus.
+// The cheats set so far take effect on the new machine.
 RETRO_API bool retro_load_game(const struct retro_game_info* game) {
   session.reset();
   if (game == nullptr || game->data == nullptr || game->size == 0u) {
@@ -229,8 +265,18 @@ RETRO_API bool retro_load_game(const struct retro_game_info* game) {
   describeControllers();
 
   const snaggletooth::Region region = regionOption().value_or(regionOf(rom));
-  session = std::make_unique<Session>(std::move(rom), region, threadsOption());
-  session->screen.mode = interlaceOption();
+  MachineThreads threads = threadsOption();
+  askedThreads = threads;
+  GpuDevice* device = deviceFor(threads);
+  try {
+    session = std::make_unique<Session>(rom, region, threads, device);
+  } catch (const std::runtime_error& error) {
+    if (device == nullptr) throw;
+    cannotDrawOnGpu(error.what());
+    threads.picture = PictureDrawing::CallingThread;
+    session = std::make_unique<Session>(rom, region, threads, nullptr);
+  }
+  session->picture.mode = interlaceOption();
   session->aspect = aspectOption();
   session->shownAspect = session->aspect;
   session->memoryMap.tell();

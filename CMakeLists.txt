@@ -92,6 +92,9 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   set(SDL_KMSDRM     OFF CACHE BOOL "" FORCE)
 endif()
 add_subdirectory(third_party/snaggletooth/third_party/sdl EXCLUDE_FROM_ALL SYSTEM)
+# SDL marks its functions for export; an empty SDL_DECLSPEC leaves them hidden like the rest of
+# the module, so the libretro entry points stay its only exports.
+target_compile_definitions(SDL3-static PRIVATE "SDL_DECLSPEC=")
 
 add_subdirectory(third_party/snaggletooth EXCLUDE_FROM_ALL)
 
@@ -101,6 +104,7 @@ add_library(snaggletooth_libretro MODULE
   src/cheats.cpp
   src/controllers.cpp
   src/frontend.cpp
+  src/gpu_device.cpp
   src/libretro.cpp
   src/memory_map.cpp
   src/options.cpp
@@ -111,8 +115,12 @@ add_library(snaggletooth_libretro MODULE
   src/work_ram.cpp
 )
 target_compile_features(snaggletooth_libretro PRIVATE cxx_std_20)
+# SDL_MAIN_HANDLED keeps SDL's headers from renaming main: the core is a module in the
+# frontend's process, and it calls SDL_SetMainReady before starting SDL.
 target_compile_definitions(snaggletooth_libretro PRIVATE
   SNAGGLETOOTH_LIBRETRO_VERSION="${PROJECT_VERSION}"
+  SDL_MAIN_HANDLED
+  "SDL_DECLSPEC="
 )
 target_include_directories(snaggletooth_libretro SYSTEM PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/third_party/libretro
@@ -195,6 +203,7 @@ if(SNAGGLETOOTH_LIBRETRO_BUILD_TESTS)
     tests/cheats_test.cpp
     tests/core_info_test.cpp
     tests/save_state_test.cpp
+    tests/gpu_picture_test.cpp
   )
   target_compile_features(snaggletooth_libretro_tests PRIVATE cxx_std_20)
   set_target_properties(snaggletooth_libretro_tests PROPERTIES CXX_EXTENSIONS OFF)
