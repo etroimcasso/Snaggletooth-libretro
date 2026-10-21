@@ -52,9 +52,9 @@ class GpuDevice final : public snaggletooth::gpu::Device {
  private:
   // The three passes recorded on `command` in order over the frame last uploaded.
   void dispatch(SDL_GPUCommandBuffer* command);
-  // Once the three pipelines are made: the buffers grown to a frame's usual length, the texture
-  // cleared, and the three passes dispatched over a frame header of zeros, whose height of 0
-  // draws nothing, all waited for.
+  // Once the three pipelines are made: the buffers grown to a frame's usual length and the three
+  // passes dispatched over a frame header of zeros, whose height of 0 draws nothing, all waited
+  // for.
   void warm();
 
   SDL_GPUDevice* device_ = nullptr;

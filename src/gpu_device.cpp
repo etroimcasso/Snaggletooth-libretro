@@ -172,24 +172,9 @@ void GpuDevice::warm() {
   mapped_ = nullptr;
   frame_ = gpu::Frame{.width = 256u, .height = 1u, .firstLine = 1u, .field = 0u,
                       .interlaced = false, .bytes = kWarmHeaderBytes};
+  // The texture is made for the passes' writes alone, so it is not cleared here: every row the
+  // core reads back is drawn by the frame it reads.
   SDL_GPUCommandBuffer* command = SDL_AcquireGPUCommandBuffer(device_);
-  const SDL_GPUColorTargetInfo target{
-      .texture = texture_,
-      .mip_level = 0u,
-      .layer_or_depth_plane = 0u,
-      .clear_color = SDL_FColor{0.0f, 0.0f, 0.0f, 1.0f},
-      .load_op = SDL_GPU_LOADOP_CLEAR,
-      .store_op = SDL_GPU_STOREOP_STORE,
-      .resolve_texture = nullptr,
-      .resolve_mip_level = 0u,
-      .resolve_layer = 0u,
-      .cycle = false,
-      .cycle_resolve_texture = false,
-      .padding1 = 0u,
-      .padding2 = 0u,
-  };
-  SDL_GPURenderPass* clear = SDL_BeginGPURenderPass(command, &target, 1u, nullptr);
-  SDL_EndGPURenderPass(clear);
   SDL_GPUCopyPass* copy = SDL_BeginGPUCopyPass(command);
   const SDL_GPUTransferBufferLocation from{.transfer_buffer = upload_, .offset = 0u};
   const SDL_GPUBufferRegion to{.buffer = buffer_, .offset = 0u, .size = static_cast<Uint32>(kWarmHeaderBytes)};
