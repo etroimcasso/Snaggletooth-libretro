@@ -21,6 +21,9 @@ namespace snaggletooth_libretro {
 // over its scratch buffer into its texture, each picture line on the texture row of the same
 // number. readBack() then copies the frame out as the frontend's pixels. Every call arrives on
 // the thread the machine is stepped on, which is the thread the frontend calls the core on.
+// Once the three pipelines are made, the device runs the three passes over a frame that draws
+// nothing and waits, so the GPU's first use of the texture and the pipelines, which costs
+// milliseconds, is paid as the machine is built and not in the first frame.
 class GpuDevice final : public snaggletooth::gpu::Device {
  public:
   GpuDevice() = default;
@@ -47,6 +50,13 @@ class GpuDevice final : public snaggletooth::gpu::Device {
                               std::size_t pitch);
 
  private:
+  // The three passes recorded on `command` in order over the frame last uploaded.
+  void dispatch(SDL_GPUCommandBuffer* command);
+  // Once the three pipelines are made: the buffers grown to a frame's usual length and the three
+  // passes dispatched over a frame header of zeros, whose height of 0 draws nothing, all waited
+  // for.
+  void warm();
+
   SDL_GPUDevice* device_ = nullptr;
   SDL_GPUComputePipeline* pipelines_[3] = {nullptr, nullptr, nullptr};  // one a pass, in Pass's order
   SDL_GPUBuffer* scratch_ = nullptr;
