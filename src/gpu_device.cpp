@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <memory>
 
 #if defined(__APPLE__)
@@ -21,6 +22,10 @@ namespace gpu = snaggletooth::gpu;
 
 constexpr SDL_GPUTextureFormat kTextureFormat = SDL_GPU_TEXTUREFORMAT_R32G32B32A32_FLOAT;
 constexpr std::size_t kTexelBytes = 16u;
+// What warm() maps and uploads: buffers of a length a frame with no VRAM write fits, and a frame
+// header of zeros, whose height of 0 leaves every thread of each pass drawing nothing.
+constexpr std::size_t kWarmBytes = 131072u;
+constexpr std::size_t kWarmHeaderBytes = 128u;
 
 [[nodiscard]] gpu::ShaderFormat toFormats(SDL_GPUShaderFormat sdl) noexcept {
   gpu::ShaderFormat out = gpu::ShaderFormat::None;
@@ -155,7 +160,48 @@ bool GpuDevice::makePipeline(gpu::Pass pass, const gpu::ShaderBytecode& code,
     return false;
   }
   pipelines_[static_cast<unsigned>(pass)] = pipeline;
+  if (pipelines_[0] != nullptr && pipelines_[1] != nullptr && pipelines_[2] != nullptr) warm();
   return true;
+}
+
+void GpuDevice::warm() {
+  const std::span<std::uint8_t> bytes = frameBytes(kWarmBytes);
+  if (bytes.empty()) return;
+  std::memset(bytes.data(), 0, kWarmHeaderBytes);
+  SDL_UnmapGPUTransferBuffer(device_, upload_);
+  mapped_ = nullptr;
+  frame_ = gpu::Frame{.width = 256u, .height = 1u, .firstLine = 1u, .field = 0u,
+                      .interlaced = false, .bytes = kWarmHeaderBytes};
+  SDL_GPUCommandBuffer* command = SDL_AcquireGPUCommandBuffer(device_);
+  const SDL_GPUColorTargetInfo target{
+      .texture = texture_,
+      .mip_level = 0u,
+      .layer_or_depth_plane = 0u,
+      .clear_color = SDL_FColor{0.0f, 0.0f, 0.0f, 1.0f},
+      .load_op = SDL_GPU_LOADOP_CLEAR,
+      .store_op = SDL_GPU_STOREOP_STORE,
+      .resolve_texture = nullptr,
+      .resolve_mip_level = 0u,
+      .resolve_layer = 0u,
+      .cycle = false,
+      .cycle_resolve_texture = false,
+      .padding1 = 0u,
+      .padding2 = 0u,
+  };
+  SDL_GPURenderPass* clear = SDL_BeginGPURenderPass(command, &target, 1u, nullptr);
+  SDL_EndGPURenderPass(clear);
+  SDL_GPUCopyPass* copy = SDL_BeginGPUCopyPass(command);
+  const SDL_GPUTransferBufferLocation from{.transfer_buffer = upload_, .offset = 0u};
+  const SDL_GPUBufferRegion to{.buffer = buffer_, .offset = 0u, .size = static_cast<Uint32>(kWarmHeaderBytes)};
+  SDL_UploadToGPUBuffer(copy, &from, &to, true);
+  SDL_EndGPUCopyPass(copy);
+  dispatch(command);
+  SDL_GPUFence* fence = SDL_SubmitGPUCommandBufferAndAcquireFence(command);
+  if (fence != nullptr) {
+    SDL_WaitForGPUFences(device_, true, &fence, 1u);
+    SDL_ReleaseGPUFence(device_, fence);
+  }
+  frame_ = gpu::Frame{};
 }
 
 std::span<std::uint8_t> GpuDevice::frameBytes(std::size_t bytes) {
@@ -198,6 +244,11 @@ void GpuDevice::draw(const gpu::Frame& frame) {
   const SDL_GPUBufferRegion to{.buffer = buffer_, .offset = 0u, .size = static_cast<Uint32>(frame.bytes)};
   SDL_UploadToGPUBuffer(copy, &from, &to, true);
   SDL_EndGPUCopyPass(copy);
+  dispatch(command);
+  SDL_SubmitGPUCommandBuffer(command);
+}
+
+void GpuDevice::dispatch(SDL_GPUCommandBuffer* command) {
   // Each picture line on the texture row of its own number: the frontend's picture is placed
   // from the rows read back (Picture::place).
   const gpu::Uniform uniform = gpu::uniformFor(gpu::RowMap{});
@@ -223,7 +274,6 @@ void GpuDevice::draw(const gpu::Frame& frame) {
     SDL_DispatchGPUCompute(run, groups.x, groups.y, groups.z);
     SDL_EndGPUComputePass(run);
   }
-  SDL_SubmitGPUCommandBuffer(command);
 }
 
 bool GpuDevice::readBack(unsigned width, unsigned lines, std::uint32_t* first, std::size_t pitch) {
