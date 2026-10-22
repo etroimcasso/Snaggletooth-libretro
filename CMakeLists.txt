@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(SnaggletoothLibretro VERSION 0.1.0 LANGUAGES CXX)
+project(SnaggletoothLibretro VERSION 1.0.0 LANGUAGES CXX)
 
 # A build is optimized by default: an empty CMAKE_BUILD_TYPE (CMake's default when nothing
 # supplies one) would produce an unoptimized, unstripped core. Multi-config generators

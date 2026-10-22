@@ -27,16 +27,40 @@ frontend.
 - **Core options** for region (Auto, NTSC or PAL), aspect ratio, interlacing, and where the
   picture and sound are processed.
 
+## Download
+
+Grab the archive for your platform from the
+[latest release](https://github.com/etroimcasso/Snaggletooth-libretro/releases/latest):
+
+| Platform | Archive |
+|---|---|
+| Windows x64 | `snaggletooth_libretro-windows-x64.zip` |
+| Windows ARM64 | `snaggletooth_libretro-windows-arm64.zip` |
+| macOS (Apple silicon) | `snaggletooth_libretro-macos-arm64.zip` |
+| Linux x64 | `snaggletooth_libretro-linux-x64.zip` |
+| Linux ARM64 | `snaggletooth_libretro-linux-arm64.zip` |
+
+Each archive holds the core, its info file and the licenses. The core is self-contained, so
+there's nothing else to install. GPU rendering uses Metal on macOS, Direct3D 12 on Windows and
+Vulkan on Linux; if your machine has no usable graphics card, the core says so and falls back to
+the CPU.
+
 ## Installing
 
-There's no release yet, so build the core first (see below). Then:
-
-1. Copy `snaggletooth_libretro.dylib` (`.so` on Linux, `.dll` on Windows) from `build/` into
-   RetroArch's **Cores** directory.
-2. Copy `snaggletooth_libretro.info` from `build/` into RetroArch's **Core Info** directory.
+1. Copy `snaggletooth_libretro.dylib` (`.so` on Linux, `.dll` on Windows) from the archive's
+   folder into RetroArch's **Cores** directory.
+2. Copy `snaggletooth_libretro.info` from the same folder into RetroArch's **Core Info**
+   directory.
 
 Both directories are listed under Settings › Directory in RetroArch. The core shows up as
 **Nintendo - SNES / SFC (Snaggletooth)**. It loads `.sfc`, `.smc`, `.swc` and `.fig` files.
+
+On macOS, a file downloaded in a browser is quarantined and RetroArch won't load it until you
+clear the flag:
+
+```sh
+xattr -d com.apple.quarantine snaggletooth_libretro.dylib
+```
 
 ## Building from source
 
@@ -55,7 +79,8 @@ the shader tools Snaggletooth uses for its GPU renderer:
 - **Windows:** dxc, which ships with the Windows SDK
 
 If a tool is missing, the configure step tells you which one. The built core lands in `build/`
-(`build\Release\` with Visual Studio), with the info file beside it. Keep `--config Release` on Visual Studio, which builds Debug otherwise.
+(`build\Release\` with Visual Studio), with the info file beside it, so a build installs the same
+way as a release. Keep `--config Release` on Visual Studio, which builds Debug otherwise.
 
 To run the test suite:
 
