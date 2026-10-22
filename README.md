@@ -1,8 +1,8 @@
 # Snaggletooth for libretro
 
 Play SNES games in RetroArch with [Snaggletooth](https://github.com/etroimcasso/Snaggletooth),
-a clean-room, MIT-licensed SNES emulator. This core works in RetroArch and any other libretro
-frontend.
+a cycle-accurate, clean-room, MIT-licensed SNES emulator. This core works in RetroArch and any
+other libretro frontend.
 
 > [!NOTE]
 > **Early build.** Everything below works today, but games that use an extra chip in the
@@ -11,6 +11,8 @@ frontend.
 
 ## What you get
 
+- **Cycle accuracy.** Games run with the timing of the real console, so homebrew, ROM hacks and
+  timing tricks behave as they do on hardware, with no per-game fixes.
 - **The full picture.** Every resolution the console draws, including hi-res and interlaced
   games, in 32-bit color. Choose Weave, Bob or Off for interlaced games, and square pixels or 4:3.
 - **GPU-powered PPU**. Snaggletooth renders the SNES picture on the graphics card rather
