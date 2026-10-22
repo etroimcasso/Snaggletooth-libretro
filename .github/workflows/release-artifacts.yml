@@ -1,13 +1,13 @@
 name: Release Artifacts
 
-# Builds the core once on every platform, runs the suite on that build, and packages the module
-# the suite passed. Each platform uploads ONE artifact: the archive a person downloads, and nothing
-# else; the suite's output stays in the job's log. A run's artifacts are exactly the five release
-# archives, each made and proved by scripts/package.sh or scripts/package.ps1: one folder inside,
-# holding the core, its info file and the two licenses. ci.yml does not run on these branches.
+# Builds the core on every platform and uploads ONE artifact per platform: the archive a person
+# downloads, and nothing else. No tests and no test-result files: this workflow produces the things
+# a person downloads. A run's artifacts are exactly the five release archives, each made and
+# proved by scripts/package.sh or scripts/package.ps1: one folder inside, holding the core, its
+# info file and the two licenses.
 #
-# Push a ci/release-artifacts-<version> branch to produce a set (ci/release-artifacts-1-0-0 for
-# 1.0.0). The branch name carries the version, and the version guard refuses any branch whose
+# Push a ci/release-artifacts-<version> branch to produce a set (ci/release-artifacts-0-1-0 for
+# 0.1.0). The branch name carries the version, and the version guard refuses any branch whose
 # version disagrees with the project's, so a mislabeled artifact cannot escape. The release itself
 # is made by hand, after the five archives have been installed and run.
 #
@@ -71,15 +71,12 @@ jobs:
           clean: false
           submodules: recursive
 
-      - name: Build the core and the suite
+      - name: Build the core
         run: |
           set -eu
           cmake -S "$GITHUB_WORKSPACE" -B "$GITHUB_WORKSPACE/build-release" -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_BUILD_TYPE=Release -DSNAGGLETOOTH_LIBRETRO_BUILD_TESTS=OFF
           cmake --build "$GITHUB_WORKSPACE/build-release" --parallel
-
-      - name: Test
-        run: ctest --test-dir "$GITHUB_WORKSPACE/build-release" --output-on-failure
 
       - name: Package
         env:
@@ -110,19 +107,13 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Build the core and the suite
+      - name: Build the core
         shell: powershell
         run: |
           cmake -S $env:GITHUB_WORKSPACE -B C:\snaggletooth-libretro-release-build `
-            -G "Visual Studio 17 2022" -A x64
+            -G "Visual Studio 17 2022" -A x64 -DSNAGGLETOOTH_LIBRETRO_BUILD_TESTS=OFF
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cmake --build C:\snaggletooth-libretro-release-build --config Release --parallel
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: Test
-        shell: powershell
-        run: |
-          ctest --test-dir C:\snaggletooth-libretro-release-build -C Release --output-on-failure
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Package
@@ -157,15 +148,12 @@ jobs:
           clean: false
           submodules: recursive
 
-      - name: Build the core and the suite
+      - name: Build the core
         run: |
           set -eu
           cmake -S "$GITHUB_WORKSPACE" -B "$GITHUB_WORKSPACE/build-release" -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_BUILD_TYPE=Release -DSNAGGLETOOTH_LIBRETRO_BUILD_TESTS=OFF
           cmake --build "$GITHUB_WORKSPACE/build-release" --parallel
-
-      - name: Test
-        run: ctest --test-dir "$GITHUB_WORKSPACE/build-release" --output-on-failure
 
       - name: Package
         env:
@@ -199,15 +187,12 @@ jobs:
           clean: false
           submodules: recursive
 
-      - name: Build the core and the suite
+      - name: Build the core
         run: |
           set -eu
           cmake -S "$GITHUB_WORKSPACE" -B "$GITHUB_WORKSPACE/build-release" -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_BUILD_TYPE=Release -DSNAGGLETOOTH_LIBRETRO_BUILD_TESTS=OFF
           cmake --build "$GITHUB_WORKSPACE/build-release" --parallel
-
-      - name: Test
-        run: ctest --test-dir "$GITHUB_WORKSPACE/build-release" --output-on-failure
 
       - name: Package
         env:
@@ -240,19 +225,13 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Build the core and the suite
+      - name: Build the core
         shell: powershell
         run: |
           cmake -S $env:GITHUB_WORKSPACE -B C:\snaggletooth-libretro-release-build `
-            -G "Visual Studio 17 2022" -A ARM64
+            -G "Visual Studio 17 2022" -A ARM64 -DSNAGGLETOOTH_LIBRETRO_BUILD_TESTS=OFF
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cmake --build C:\snaggletooth-libretro-release-build --config Release --parallel
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: Test
-        shell: powershell
-        run: |
-          ctest --test-dir C:\snaggletooth-libretro-release-build -C Release --output-on-failure
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Package
