@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(SnaggletoothLibretro VERSION 0.1.0 LANGUAGES CXX)
+project(SnaggletoothLibretro VERSION 1.0.0 LANGUAGES CXX)
 
 # A build is optimized by default: an empty CMAKE_BUILD_TYPE (CMake's default when nothing
 # supplies one) would produce an unoptimized, unstripped core. Multi-config generators
@@ -139,8 +139,14 @@ set_target_properties(snaggletooth_libretro PROPERTIES
 if(APPLE)
   set_target_properties(snaggletooth_libretro PROPERTIES SUFFIX ".dylib")
 endif()
+# On Linux the C++ runtime is linked into the module. --exclude-libs keeps the symbols of every
+# static library the module links, the runtime's among them, out of its exports, so the libretro
+# entry points stay its only exports.
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-  target_link_options(snaggletooth_libretro PRIVATE -static-libstdc++ -static-libgcc)
+  target_link_options(snaggletooth_libretro PRIVATE
+    -static-libstdc++ -static-libgcc
+    LINKER:--exclude-libs,ALL
+  )
 endif()
 
 # The core's info file sits beside the module in the build tree, so the directory a build

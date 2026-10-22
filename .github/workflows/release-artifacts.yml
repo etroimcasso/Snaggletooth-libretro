@@ -1,8 +1,8 @@
 name: Release Artifacts
 
 # Builds the core on every platform and uploads ONE artifact per platform: the archive a person
-# downloads, and nothing else. No tests and no test-result files here; the CI workflow runs the
-# suite on the same push. A run's artifacts are exactly the five release archives, each made and
+# downloads, and nothing else. No tests and no test-result files: this workflow produces the things
+# a person downloads. A run's artifacts are exactly the five release archives, each made and
 # proved by scripts/package.sh or scripts/package.ps1: one folder inside, holding the core, its
 # info file and the two licenses.
 #
