@@ -3,10 +3,13 @@ name: CI
 # Triggers fire on ci/** only — not main, not pull_request. Finished work reaches
 # main by squash-merge from a ci/<branch> that already ran this pipeline to green;
 # re-running on the post-squash main rebuilds the same source for no new signal.
+# A ci/release-artifacts-* branch runs release-artifacts.yml alone, which runs this
+# suite on the build it packages.
 on:
   push:
     branches:
       - 'ci/**'
+      - '!ci/release-artifacts-*'
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
