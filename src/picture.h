@@ -91,17 +91,22 @@ class Screen final : public snaggletooth::FrameObserver {
   Picture& into_;
 };
 
+class HardwareDevice;
+
 // The machine's timeline observer, for a machine drawing on the GPU: the device has drawn the
-// frame by the time the machine reports it, and the observer reads the frame back from the
-// device into the picture, then stops the run there.
+// frame by the time the machine reports it, then the run stops there. On the core's own device
+// the observer reads the frame back into the picture; on the frontend's device the frame stays
+// in the device's texture, already placed, and the observer records only the picture's shape.
 class GpuScreen final : public snaggletooth::PpuTimelineObserver {
  public:
   explicit GpuScreen(Picture& into) : into_(into) {}
   void frame(const snaggletooth::PpuTimeline& timeline) override;
 
-  // The machine whose PPU says whether the run is interlaced, and the device it draws on.
+  // The machine whose PPU says whether the run is interlaced, and the device it draws on: the
+  // core's own, or the frontend's.
   const snaggletooth::Snes* machine = nullptr;
   GpuDevice* device = nullptr;
+  HardwareDevice* hardware = nullptr;
 
  private:
   Picture& into_;
