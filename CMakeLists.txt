@@ -108,6 +108,7 @@ add_library(snaggletooth_libretro MODULE
   src/controllers.cpp
   src/frontend.cpp
   src/gpu_device.cpp
+  src/hw_render.cpp
   src/libretro.cpp
   src/memory_map.cpp
   src/options.cpp
@@ -117,6 +118,14 @@ add_library(snaggletooth_libretro MODULE
   src/sound.cpp
   src/work_ram.cpp
 )
+# The backend for the platform's hardware-render context, the one whose shader format the
+# library builds there: the Direct3D 12 device on Windows, the Vulkan device on macOS and Linux.
+# Each platform compiles its own alone.
+if(WIN32)
+  target_sources(snaggletooth_libretro PRIVATE src/d3d12_device.cpp)
+else()
+  target_sources(snaggletooth_libretro PRIVATE src/vulkan_device.cpp)
+endif()
 target_compile_features(snaggletooth_libretro PRIVATE cxx_std_20)
 # SDL_MAIN_HANDLED keeps SDL's headers from renaming main: the core is a module in the
 # frontend's process, and it calls SDL_SetMainReady before starting SDL.
@@ -128,7 +137,38 @@ target_compile_definitions(snaggletooth_libretro PRIVATE
 target_include_directories(snaggletooth_libretro SYSTEM PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/third_party/libretro
 )
+# The Vulkan headers libretro_vulkan.h includes, from the copy in SDL's tree. The core calls
+# Vulkan only through the functions the frontend's loader hands it, so it declares none. The
+# Direct3D 12 headers libretro_d3d12.h includes are the Windows SDK's.
+if(NOT WIN32)
+  target_include_directories(snaggletooth_libretro SYSTEM PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/snaggletooth/third_party/sdl/src/video/khronos
+  )
+  target_compile_definitions(snaggletooth_libretro PRIVATE VK_NO_PROTOTYPES)
+endif()
 target_link_libraries(snaggletooth_libretro PRIVATE snaggletooth::snaggletooth SDL3::SDL3)
+
+# The library's three PPU passes in SPIR-V for the frontend's Vulkan device on macOS. The library
+# builds its shader in the platform's format, a Metal library here, and libretro names no Metal
+# context, so the core compiles the same source once more, with the library's own shader system,
+# in the format Vulkan over MoltenVK takes. On Linux the library's bytes are SPIR-V already and
+# on Windows DXIL, the formats of those platforms' contexts, so nothing is compiled there. The
+# include comes after the library's add_subdirectory, and the format set here is the core's own:
+# the library's scope keeps its platform format.
+if(APPLE)
+  include(${CMAKE_CURRENT_SOURCE_DIR}/third_party/snaggletooth/shaders/SnaggletoothShaders.cmake)
+  set(SNAGGLETOOTH_SHADER_FORMAT "spirv")
+  snaggletooth_find_shader_tools()
+  set(_ppu ${CMAKE_CURRENT_SOURCE_DIR}/third_party/snaggletooth/shaders)
+  foreach(_pass sprites tiles pixels)
+    snaggletooth_compile_shader(snaggletooth_libretro
+      STEM ppu_${_pass}.vulkan.comp SRC ${_ppu}/ppu_${_pass}.comp.hlsl STAGE comp INCLUDE ${_ppu})
+  endforeach()
+  unset(_ppu)
+  target_compile_definitions(snaggletooth_libretro PRIVATE SNAGGLETOOTH_LIBRETRO_OWN_SPIRV=1)
+else()
+  target_compile_definitions(snaggletooth_libretro PRIVATE SNAGGLETOOTH_LIBRETRO_OWN_SPIRV=0)
+endif()
 # libretro names a core <name>_libretro.<ext> with no "lib" prefix on any platform, and the
 # extension is the platform's shared-library one: .dylib on Apple, where CMake would give a
 # module .so.
@@ -213,6 +253,7 @@ if(SNAGGLETOOTH_LIBRETRO_BUILD_TESTS)
     tests/core_info_test.cpp
     tests/save_state_test.cpp
     tests/gpu_picture_test.cpp
+    tests/hw_render_test.cpp
   )
   target_compile_features(snaggletooth_libretro_tests PRIVATE cxx_std_20)
   set_target_properties(snaggletooth_libretro_tests PROPERTIES CXX_EXTENSIONS OFF)
@@ -220,6 +261,14 @@ if(SNAGGLETOOTH_LIBRETRO_BUILD_TESTS)
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/libretro
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/snaggletooth/tools
   )
+  # The suite stands in for the platform's hardware frontend through the computer's own Direct3D
+  # 12 or Vulkan, opened at run time, so it declares no function of either and links neither.
+  if(NOT WIN32)
+    target_include_directories(snaggletooth_libretro_tests SYSTEM PRIVATE
+      ${CMAKE_CURRENT_SOURCE_DIR}/third_party/snaggletooth/third_party/sdl/src/video/khronos
+    )
+    target_compile_definitions(snaggletooth_libretro_tests PRIVATE VK_NO_PROTOTYPES)
+  endif()
   target_compile_definitions(snaggletooth_libretro_tests PRIVATE
     RETRO_IMPORT_SYMBOLS
     SNAGGLETOOTH_LIBRETRO_VERSION="${PROJECT_VERSION}"
