@@ -7,6 +7,7 @@
 
 #include "battery_save.h"
 #include "gpu_device.h"
+#include "hardware_device.h"
 #include "memory_map.h"
 #include "picture.h"
 #include "save_state.h"
@@ -52,20 +53,29 @@ struct Session {
   void runFrame();
 
   // Hands the frontend the picture the last frame made, telling it the new geometry first when
-  // the picture's shape or aspect has changed.
+  // the picture's shape or aspect has changed. Under the frontend's hardware context the picture
+  // is handed over as a texture on the frontend's device: the one the machine drew into, or one
+  // the picture drawn on the processor is copied into; with no context ready, the frontend is
+  // told to show the last frame again.
   void showPicture();
 
   // Hands the frontend the sound the last frame made, every sample from the console's time up
   // to the frame's end.
   void playSound();
 
-  // Moves the machine's work onto the threads asked for, drawing on `gpu` where the picture is
-  // drawn on the GPU. The machine takes its threads and its device when it is built, so a change
-  // builds a new machine on the same cartridge and restores the running one's state into it:
-  // the game carries on from the cycle it stopped at, with the same pads, save, work RAM and
-  // picture. A machine that cannot draw on the device is built drawing on the frontend's thread
-  // instead, the game carried on there, and the machine's std::runtime_error is thrown on.
-  void runOn(MachineThreads asked, GpuDevice* gpu);
+  // Moves the machine's work onto the threads asked for, drawing where the picture is drawn on
+  // the GPU on `hardware`, the frontend's device, when there is one, and on `gpu`, the core's
+  // own, otherwise. The machine takes its threads and its device when it is built, so a change
+  // builds a new machine on the same cartridge and restores the running one's state into it: the
+  // game carries on from the cycle it stopped at, with the same pads, save, work RAM and picture,
+  // the picture carried into or out of the frontend's device's texture when the drawing moves
+  // there or away. A machine that cannot draw on the device is built drawing on the frontend's
+  // thread instead, the game carried on there, and the machine's std::runtime_error is thrown on.
+  void runOn(MachineThreads asked, GpuDevice* gpu, HardwareDevice* hardware = nullptr);
+
+  // Whether runOn() with these arguments builds a new machine.
+  [[nodiscard]] bool rebuildsFor(MachineThreads asked, GpuDevice* gpu,
+                                 HardwareDevice* hardware = nullptr) const;
 
   // Puts a saved state into the machine (SaveState::load), then copies the machine's save and
   // work RAM into the frontend's buffers, so they hold the state's and the next frame carries
@@ -74,11 +84,17 @@ struct Session {
   bool loadState(std::span<const std::uint8_t> bytes);
 
   // The cartridge image the machine was built from, the configuration it was built with, where
-  // it runs its work, and the device it draws on, if it draws on the GPU.
+  // it runs its work, and the device it draws on, if it draws on the GPU: the core's own, or the
+  // frontend's.
   std::vector<std::uint8_t> rom;
   MachineThreads threads;
   GpuDevice* device = nullptr;
+  HardwareDevice* hardware = nullptr;
   snaggletooth::SnesConfig config;
+  // Under the frontend's hardware context: true from the load, and the device frames are handed
+  // over through while the context is ready.
+  bool hardwareContext = false;
+  HardwareDevice* presenter = nullptr;
   // The picture the frontend is handed, and the observer that fills it: Screen on the
   // processor, GpuScreen on the GPU.
   Picture picture;

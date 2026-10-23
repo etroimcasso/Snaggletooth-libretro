@@ -6,7 +6,8 @@
 // (controllers.h), the cartridge's save (battery_save.h), the console's work RAM (work_ram.h)
 // and the map placing both on the bus (memory_map.h), the player's cheat codes (cheats.h), the
 // core options (options.h), the machine's saved states (save_state.h), the graphics card the
-// picture is drawn on (gpu_device.h) and the running cartridge (session.h).
+// picture is drawn on — the frontend's, through its hardware-render context (hw_render.h,
+// hardware_device.h), or the core's own (gpu_device.h) — and the running cartridge (session.h).
 //
 // A libretro core is one per process, reached through plain functions with no handle, so the
 // running cartridge lives in this file's own state: the session a loaded cartridge runs in,
@@ -19,6 +20,7 @@
 #include "controllers.h"
 #include "frontend.h"
 #include "gpu_device.h"
+#include "hw_render.h"
 #include "options.h"
 #include "picture.h"
 #include "save_state.h"
@@ -35,7 +37,6 @@
 #include <span>
 #include <stdexcept>
 #include <string>
-#include <utility>
 #include <vector>
 
 using namespace snaggletooth_libretro;
@@ -62,11 +63,11 @@ void cannotDrawOnGpu(const std::string& reason) {
              "). The picture is drawn on the processor.");
 }
 
-// The device a machine on `threads` draws on: the process's GPU device where the picture is drawn
-// on the GPU. Where no device opens, the player is told and the picture moves to the frontend's
-// thread.
+// The core's own device a machine on `threads` draws on: the process's GPU device where the
+// picture is drawn on the GPU and the frontend gave no hardware context. Where no device opens,
+// the player is told and the picture moves to the frontend's thread.
 GpuDevice* deviceFor(MachineThreads& threads) {
-  if (threads.picture != PictureDrawing::Gpu) return nullptr;
+  if (threads.picture != PictureDrawing::Gpu || (session && session->hardwareContext)) return nullptr;
   std::string error;
   GpuDevice* device = sharedGpuDevice(error);
   if (device == nullptr) {
@@ -74,6 +75,46 @@ GpuDevice* deviceFor(MachineThreads& threads) {
     threads.picture = PictureDrawing::CallingThread;
   }
   return device;
+}
+
+// Moves the running machine onto the threads the player asked for, drawing on the frontend's
+// device when the context is ready, and gives a rebuilt machine the ROM patches of the cheats
+// that are on.
+void runAsAsked() {
+  MachineThreads threads = askedThreads;
+  GpuDevice* device = deviceFor(threads);
+  HardwareDevice* hardware = session->hardwareContext ? session->presenter : nullptr;
+  const bool rebuilt = session->rebuildsFor(threads, device, hardware);
+  try {
+    session->runOn(threads, device, hardware);
+  } catch (const std::runtime_error& error) {
+    cannotDrawOnGpu(error.what());
+  }
+  if (rebuilt) patchRom(*session->machine);
+}
+
+// The frontend's hardware context is ready, the first time or made anew: the device is made over
+// it, frames are handed over through it, and a machine drawing on the GPU moves onto it.
+void contextReady() {
+  std::string error;
+  HardwareDevice* hardware = openHardwareDevice(error);
+  if (hardware == nullptr) {
+    tellPlayer(std::string("Snaggletooth cannot use the frontend's ") + hardwareApiName() +
+               " device (" + error + ").");
+  }
+  if (!session) return;
+  session->presenter = hardware;
+  if (hardware != nullptr) runAsAsked();
+}
+
+// The frontend is taking its hardware context down: the machine moves off the device, carrying
+// the picture with it, and the device lets go of everything it made there.
+void contextGoing() {
+  if (session) {
+    session->presenter = nullptr;
+    runAsAsked();
+  }
+  closeHardwareDevice();
 }
 
 }  // namespace
@@ -117,9 +158,11 @@ RETRO_API void retro_init(void) {
   declareSerializationQuirks();
 }
 
-// The machine goes before the GPU device it draws on.
+// The machine goes before the GPU device it draws on. A device made over the frontend's hardware
+// context is let go without a call into it, since the frontend may have taken the context down.
 RETRO_API void retro_deinit(void) {
   session.reset();
+  abandonHardwareDevice();
   closeSharedGpuDevice();
   forgetCheats();
   logPrintf = nullptr;
@@ -173,17 +216,10 @@ RETRO_API void retro_run(void) {
   if (optionsChanged()) {
     session->picture.mode = interlaceOption();
     session->aspect = aspectOption();
-    MachineThreads threads = threadsOption();
+    const MachineThreads threads = threadsOption();
     if (threads != askedThreads) {
       askedThreads = threads;
-      GpuDevice* device = deviceFor(threads);
-      const bool rebuilt = threads != session->threads || device != session->device;
-      try {
-        session->runOn(threads, device);
-      } catch (const std::runtime_error& error) {
-        cannotDrawOnGpu(error.what());
-      }
-      if (rebuilt) patchRom(*session->machine);
+      runAsAsked();
     }
   }
   session->save.passToMachine(*session->machine);
@@ -235,11 +271,13 @@ RETRO_API void retro_cheat_set(unsigned index, bool enabled, const char* code) {
 // Loads a cartridge from the bytes the frontend read. A copier's header ahead of the image is
 // dropped, the machine is built at the region the Region option names, or under Auto the one
 // the cartridge's header names, and a cartridge whose board carries a coprocessor is refused
-// with a message naming the chip. The machine runs its sound and draws its picture where the
-// thread options choose; where the picture cannot be drawn on the GPU, the player is told and it
-// is drawn on the frontend's thread. The frontend is told the devices each port takes and the
-// name of every button on them, and where the work RAM and the save sit on the console's bus.
-// The cheats set so far take effect on the new machine.
+// with a message naming the chip. The frontend is asked for the platform's hardware context,
+// through which every frame is shown on its own device. The machine runs its sound and draws its
+// picture where the thread options choose, on the GPU on the frontend's device once the context
+// is ready, or on the core's own where the frontend gives no context; where the picture cannot be
+// drawn on the GPU, the player is told and it is drawn on the frontend's thread. The frontend is
+// told the devices each port takes and the name of every button on them, and where the work RAM
+// and the save sit on the console's bus. The cheats set so far take effect on the new machine.
 RETRO_API bool retro_load_game(const struct retro_game_info* game) {
   session.reset();
   if (game == nullptr || game->data == nullptr || game->size == 0u) {
@@ -267,7 +305,10 @@ RETRO_API bool retro_load_game(const struct retro_game_info* game) {
   const snaggletooth::Region region = regionOption().value_or(regionOf(rom));
   MachineThreads threads = threadsOption();
   askedThreads = threads;
-  GpuDevice* device = deviceFor(threads);
+  // The frontend's own device shows every frame where the frontend gives a context, whichever
+  // way the picture is drawn; the machine moves onto it once the context is ready.
+  const bool hardware = askForHardwareContext(contextReady, contextGoing);
+  GpuDevice* device = hardware ? nullptr : deviceFor(threads);
   if (device != nullptr) {
     try {
       session = std::make_unique<Session>(rom, region, threads, device);
@@ -277,11 +318,17 @@ RETRO_API bool retro_load_game(const struct retro_game_info* game) {
     }
   }
   if (!session) session = std::make_unique<Session>(rom, region, threads, nullptr);
+  session->hardwareContext = hardware;
   session->picture.mode = interlaceOption();
   session->aspect = aspectOption();
   session->shownAspect = session->aspect;
   session->memoryMap.tell();
   patchRom(*session->machine);
+  // A context the frontend already has ready from an earlier cartridge serves this one.
+  if (hardware && hardwareDevice() != nullptr) {
+    session->presenter = hardwareDevice();
+    runAsAsked();
+  }
   return true;
 }
 

@@ -1,8 +1,8 @@
 # Snaggletooth for libretro
 
 Play SNES games in RetroArch with [Snaggletooth](https://github.com/etroimcasso/Snaggletooth),
-a clean-room, MIT-licensed SNES emulator. This core works in RetroArch and any other libretro
-frontend.
+a cycle-accurate, clean-room, MIT-licensed SNES virtual machine. This core works in RetroArch
+and any other libretro frontend.
 
 > [!NOTE]
 > **Early build.** Everything below works today, but games that use an extra chip in the
@@ -11,6 +11,8 @@ frontend.
 
 ## What you get
 
+- **Cycle accuracy.** Games run with the timing of the real console, so homebrew, ROM hacks and
+  timing tricks behave as they do on hardware, with no per-game fixes.
 - **The full picture.** Every resolution the console draws, including hi-res and interlaced
   games, in 32-bit color. Choose Weave, Bob or Off for interlaced games, and square pixels or 4:3.
 - **GPU-powered PPU**. Snaggletooth renders the SNES picture on the graphics card rather
@@ -27,23 +29,6 @@ frontend.
 - **Core options** for region (Auto, NTSC or PAL), aspect ratio, interlacing, and where the
   picture and sound are processed.
 
-## Download
-
-Grab the archive for your platform from the
-[latest release](https://github.com/etroimcasso/Snaggletooth-libretro/releases/latest):
-
-| Platform | Archive |
-|---|---|
-| Windows x64 | `snaggletooth_libretro-windows-x64.zip` |
-| Windows ARM64 | `snaggletooth_libretro-windows-arm64.zip` |
-| macOS (Apple silicon) | `snaggletooth_libretro-macos-arm64.zip` |
-| Linux x64 | `snaggletooth_libretro-linux-x64.zip` |
-| Linux ARM64 | `snaggletooth_libretro-linux-arm64.zip` |
-
-Each archive holds the core, its info file and the licenses. The core is self-contained, so
-there's nothing else to install. GPU rendering uses Metal on macOS, Direct3D 12 on Windows and
-Vulkan on Linux; if your machine has no usable graphics card, the core says so and falls back to
-the CPU.
 
 ## Installing
 

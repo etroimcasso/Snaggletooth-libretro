@@ -57,7 +57,8 @@ void Screen::frame(const snaggletooth::VideoFrame& field) {
 void GpuScreen::frame(const snaggletooth::PpuTimeline& timeline) {
   const bool interlaced = machine != nullptr && machine->state().ppu.interlace();
   const Picture::Rows rows = into_.place(timeline.width, timeline.height, interlaced, timeline.field);
-  if (device != nullptr && device->readBack(timeline.width, timeline.height, rows.first, rows.pitch)) {
+  if (hardware == nullptr && device != nullptr &&
+      device->readBack(timeline.width, timeline.height, rows.first, rows.pitch)) {
     into_.finish();
   }
   throw FrameFinished{};
