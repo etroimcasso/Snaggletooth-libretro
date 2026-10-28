@@ -19,12 +19,18 @@ namespace {
 // frame.
 enum class CheatKind { RomPatch, EveryFrame };
 
-struct Cheat {
-  std::string code;  // as the frontend handed it over, for the message that refuses it
+// One code of a cheat: the byte it changes and how.
+struct Part {
   std::uint32_t address = 0;
   std::uint8_t value = 0;
   CheatKind kind = CheatKind::EveryFrame;
   std::optional<std::uint8_t> original;  // the ROM byte a patch in place replaced
+};
+
+// A cheat as the frontend hands it over: one code, or several joined with `+`, on or off as one.
+struct Cheat {
+  std::string code;  // as the frontend handed it over, for the message that refuses it
+  std::vector<Part> parts;
   bool on = false;
 };
 
@@ -80,7 +86,7 @@ std::optional<std::uint32_t> readHex(std::string_view text) {
   return number;
 }
 
-std::optional<Cheat> gameGenie(std::string_view text) {
+std::optional<Part> gameGenie(std::string_view text) {
   std::uint32_t word = 0;
   for (std::size_t at = 0; at < text.size(); ++at) {
     if (at == kGameGenieHyphen) continue;
@@ -91,73 +97,96 @@ std::optional<Cheat> gameGenie(std::string_view text) {
   const std::uint32_t scrambled = word & kBusMask;
   std::uint32_t address = 0;
   for (const unsigned from : kGameGenieAddressBits) address = address << 1 | (scrambled >> from & 1u);
-  return Cheat{.code = {},
-               .address = address,
-               .value = static_cast<std::uint8_t>(word >> 24),
-               .kind = CheatKind::RomPatch,
-               .original = std::nullopt,
-               .on = false};
+  return Part{.address = address,
+              .value = static_cast<std::uint8_t>(word >> 24),
+              .kind = CheatKind::RomPatch,
+              .original = std::nullopt};
 }
 
-std::optional<Cheat> addressAndValue(std::string_view address, std::string_view value) {
+std::optional<Part> addressAndValue(std::string_view address, std::string_view value) {
   const std::optional<std::uint32_t> where = readHex(address);
   const std::optional<std::uint32_t> what = readHex(value);
   if (!where || !what) return std::nullopt;
-  return Cheat{.code = {},
-               .address = *where,
-               .value = static_cast<std::uint8_t>(*what),
-               .kind = CheatKind::EveryFrame,
-               .original = std::nullopt,
-               .on = false};
+  return Part{.address = *where,
+              .value = static_cast<std::uint8_t>(*what),
+              .kind = CheatKind::EveryFrame,
+              .original = std::nullopt};
 }
 
-// The code `code` names, read without the whitespace at either end: `XXYY-ZZZZ` as Game Genie,
-// `AAAAAAVV` as Pro Action Replay, `AAAAAA:VV` as raw, and nothing for any other string. Every
-// Game Genie letter is a hex digit too, so eight characters with no hyphen are a Pro Action
-// Replay code.
-std::optional<Cheat> decode(std::string_view code) {
-  constexpr std::string_view kWhitespace = " \t\r\n\f\v";
-  const std::size_t first = code.find_first_not_of(kWhitespace);
-  if (first == std::string_view::npos) return std::nullopt;
-  const std::string_view text = code.substr(first, code.find_last_not_of(kWhitespace) - first + 1u);
+constexpr std::string_view kWhitespace = " \t\r\n\f\v";
 
-  std::optional<Cheat> cheat;
-  if (text.size() == kGameGenieLength && text[kGameGenieHyphen] == '-') {
-    cheat = gameGenie(text);
-  } else if (text.size() == kActionReplayLength) {
-    cheat = addressAndValue(text.substr(0, kAddressDigits), text.substr(kAddressDigits));
-  } else if (text.size() == kRawLength && text[kAddressDigits] == ':') {
-    cheat = addressAndValue(text.substr(0, kAddressDigits), text.substr(kAddressDigits + 1u));
+// `text` without the whitespace at either end.
+std::string_view trimmed(std::string_view text) {
+  const std::size_t first = text.find_first_not_of(kWhitespace);
+  if (first == std::string_view::npos) return {};
+  return text.substr(first, text.find_last_not_of(kWhitespace) - first + 1u);
+}
+
+// The code `text` names: `XXYY-ZZZZ` as Game Genie, `AAAAAAVV` as Pro Action Replay,
+// `AAAAAA:VV` as raw, and nothing for any other string. Every Game Genie letter is a hex digit
+// too, so eight characters with no hyphen are a Pro Action Replay code.
+std::optional<Part> decodeOne(std::string_view text) {
+  if (text.size() == kGameGenieLength && text[kGameGenieHyphen] == '-') return gameGenie(text);
+  if (text.size() == kActionReplayLength) {
+    return addressAndValue(text.substr(0, kAddressDigits), text.substr(kAddressDigits));
   }
-  if (cheat) cheat->code = std::string(code);
-  return cheat;
+  if (text.size() == kRawLength && text[kAddressDigits] == ':') {
+    return addressAndValue(text.substr(0, kAddressDigits), text.substr(kAddressDigits + 1u));
+  }
+  return std::nullopt;
 }
 
-// Whether the cartridge in `machine` has the memory a code writes: ROM for a patch, and any
+// The cheat `code` names: one code, or several joined with `+`, each read without the
+// whitespace around it. A string with a part in none of the three forms names nothing.
+std::optional<Cheat> decode(std::string_view code) {
+  Cheat cheat{.code = std::string(code), .parts = {}, .on = false};
+  std::string_view rest = code;
+  for (;;) {
+    const std::size_t plus = rest.find('+');
+    const std::optional<Part> part = decodeOne(trimmed(rest.substr(0, plus)));
+    if (!part) return std::nullopt;
+    cheat.parts.push_back(*part);
+    if (plus == std::string_view::npos) return cheat;
+    rest = rest.substr(plus + 1u);
+  }
+}
+
+// Whether the cartridge in `machine` has the memory every part writes: ROM for a patch, and any
 // memory the bus reaches for an every-frame write.
 bool fits(const Cheat& cheat, const snaggletooth::Snes& machine) {
-  if (cheat.kind == CheatKind::RomPatch) {
-    return machine.physical(cheat.address).space == snaggletooth::Snes::Space::CartridgeRom;
+  for (const Part& part : cheat.parts) {
+    if (part.kind == CheatKind::RomPatch) {
+      if (machine.physical(part.address).space != snaggletooth::Snes::Space::CartridgeRom) {
+        return false;
+      }
+    } else if (!machine.addressable(part.address, 1u)) {
+      return false;
+    }
   }
-  return machine.addressable(cheat.address, 1u);
+  return true;
 }
 
 void refuse(std::string_view code) {
   tellPlayer("Snaggletooth cannot read cheat code \"" + std::string(code) + "\".");
 }
 
-// A ROM patch that is on goes into the image, keeping the byte it replaces.
+// The ROM patches of a cheat that is on go into the image, each keeping the byte it replaces.
 void patch(Cheat& cheat, snaggletooth::Snes& machine) {
-  if (!cheat.on || cheat.kind != CheatKind::RomPatch) return;
-  cheat.original = machine.peek(cheat.address);
-  machine.poke(cheat.address, cheat.value);
+  if (!cheat.on) return;
+  for (Part& part : cheat.parts) {
+    if (part.kind != CheatKind::RomPatch) continue;
+    part.original = machine.peek(part.address);
+    machine.poke(part.address, part.value);
+  }
 }
 
-// A ROM patch in place gives the image back the byte it replaced.
+// The ROM patches in place give the image back the bytes they replaced, last patch first.
 void putBack(Cheat& cheat, snaggletooth::Snes& machine) {
-  if (cheat.kind != CheatKind::RomPatch || !cheat.original) return;
-  machine.poke(cheat.address, *cheat.original);
-  cheat.original.reset();
+  for (auto part = cheat.parts.rbegin(); part != cheat.parts.rend(); ++part) {
+    if (part->kind != CheatKind::RomPatch || !part->original) continue;
+    machine.poke(part->address, *part->original);
+    part->original.reset();
+  }
 }
 
 }  // namespace
@@ -191,8 +220,9 @@ void forgetCheats() { cheats.clear(); }
 
 void applyCheats(snaggletooth::Snes& machine) {
   for (const std::optional<Cheat>& held : cheats) {
-    if (held && held->on && held->kind == CheatKind::EveryFrame) {
-      machine.poke(held->address, held->value);
+    if (!held || !held->on) continue;
+    for (const Part& part : held->parts) {
+      if (part.kind == CheatKind::EveryFrame) machine.poke(part.address, part.value);
     }
   }
 }
