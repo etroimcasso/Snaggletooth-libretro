@@ -5,7 +5,8 @@
 // patches a byte of the cartridge's ROM in the machine's copy of the image, and the byte it
 // replaced is put back when the code is turned off. A Pro Action Replay code, `AAAAAAVV`, and a
 // raw code, `AAAAAA:VV`, name a bus address and a byte that is written there before every
-// frame. Every byte goes through the machine's own peek and poke.
+// frame. A cheat of several codes joins them with `+` in one string, and they go on and off
+// together. Every byte goes through the machine's own peek and poke.
 
 #pragma once
 
@@ -16,10 +17,10 @@ namespace snaggletooth_libretro {
 // Puts `code` at `index` in the list of cheats, on or off, in place of what the index held; a
 // ROM patch the index held is put back first. With a machine, a ROM patch turned on takes effect
 // at once and an every-frame write from the next frame. With none, as before a cartridge loads,
-// only the list changes and the code takes effect when one loads. A code in none of the three
-// forms, or naming an address the cartridge leaves without memory (or, for Game Genie, outside
-// its ROM), is refused with a message to the player and leaves the index empty; a null code
-// empties it silently.
+// only the list changes and the code takes effect when one loads. A string with a code in none
+// of the three forms, or one naming an address the cartridge leaves without memory (or, for
+// Game Genie, outside its ROM), is refused whole with a message to the player and leaves the
+// index empty; a null code empties it silently.
 void setCheat(unsigned index, bool enabled, const char* code, snaggletooth::Snes* machine);
 
 // Turns every cheat off: each ROM patch is put back, last index first, and the list emptied.

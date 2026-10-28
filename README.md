@@ -23,8 +23,8 @@ and any other libretro frontend.
 - **Battery saves** that live in your RetroArch save folder like any other core's.
 - **Save states, rewind, run-ahead and netplay.** States are the same size and format on every
   platform, so one saved on a Mac loads on a PC.
-- **Cheats.** Game Genie, Pro Action Replay (`AAAAAAVV`) and raw (`AAAAAA:VV`) codes, plus
-  RetroArch's cheat search.
+- **Cheats.** Game Genie, Pro Action Replay (`AAAAAAVV`) and raw (`AAAAAA:VV`) codes, several
+  joined with `+` as one cheat, plus RetroArch's cheat search.
 - **RetroAchievements** support through a full memory map.
 - **Core options** for region (Auto, NTSC or PAL), aspect ratio, interlacing, and where the
   picture and sound are processed.
