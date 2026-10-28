@@ -257,8 +257,7 @@ TEST(CoreInfo, NamesMatchTheCoresSystemInfo) {
   EXPECT_EQ(info["supported_extensions"], system.valid_extensions);
   EXPECT_EQ(info["needs_fullpath"], flag(system.need_fullpath));
   EXPECT_EQ(info["display_version"], SNAGGLETOOTH_LIBRETRO_VERSION);
-  EXPECT_EQ(std::string(system.library_version).rfind(info["display_version"] + " (", 0), 0u)
-      << system.library_version;
+  EXPECT_EQ(info["display_version"], system.library_version);
 }
 
 // What the core tells the frontend before a cartridge loads: whether it runs with no content,

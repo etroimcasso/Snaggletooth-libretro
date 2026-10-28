@@ -29,7 +29,6 @@
 
 #include "snaggletooth/snes/cartridge.h"
 #include "snaggletooth/snes/snes.h"
-#include "snaggletooth/version.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -42,15 +41,6 @@
 using namespace snaggletooth_libretro;
 
 namespace {
-
-// The core's version followed by the version of the library it was built from, so a report
-// from a frontend names both. Built once, on the first call that asks for it; the frontend
-// keeps the pointer for the life of the process.
-const char* libraryVersion() {
-  static const std::string text = std::string(SNAGGLETOOTH_LIBRETRO_VERSION) + " (Snaggletooth " +
-                                  std::string(snaggletooth::version()) + ")";
-  return text.c_str();
-}
 
 std::unique_ptr<Session> session;
 
@@ -124,7 +114,7 @@ RETRO_API unsigned retro_api_version(void) { return RETRO_API_VERSION; }
 RETRO_API void retro_get_system_info(struct retro_system_info* info) {
   *info = retro_system_info{};
   info->library_name = "Snaggletooth";
-  info->library_version = libraryVersion();
+  info->library_version = SNAGGLETOOTH_LIBRETRO_VERSION;
   info->valid_extensions = "sfc|smc|swc|fig";
   info->need_fullpath = false;
   info->block_extract = false;
