@@ -1,14 +1,11 @@
 // The core as a frontend first meets it: the module loads, answers the libretro API version
-// it implements, and names itself and the library it was built from.
+// it implements, and names itself and its version.
 
 #include <libretro.h>
 
 #include "loaded_core.h"
-#include "snaggletooth/version.h"
 
 #include <gtest/gtest.h>
-
-#include <string>
 
 namespace {
 
@@ -27,7 +24,7 @@ TEST(CoreIdentity, ApiVersionIsTheHeaders) {
   EXPECT_EQ(apiVersion(), 1u);
 }
 
-TEST(CoreIdentity, SystemInfoNamesTheCoreAndTheLibrary) {
+TEST(CoreIdentity, SystemInfoNamesTheCoreAndItsVersion) {
   const LoadedCore core;
   ASSERT_TRUE(core.loaded());
   auto* systemInfo = core.entry<void(retro_system_info*)>("retro_get_system_info");
@@ -38,9 +35,7 @@ TEST(CoreIdentity, SystemInfoNamesTheCoreAndTheLibrary) {
   ASSERT_NE(info.library_name, nullptr);
   ASSERT_NE(info.library_version, nullptr);
   EXPECT_STREQ(info.library_name, "Snaggletooth");
-  const std::string expected = std::string(SNAGGLETOOTH_LIBRETRO_VERSION) + " (Snaggletooth " +
-                               std::string(snaggletooth::version()) + ")";
-  EXPECT_EQ(std::string(info.library_version), expected);
+  EXPECT_STREQ(info.library_version, SNAGGLETOOTH_LIBRETRO_VERSION);
 }
 
 TEST(CoreIdentity, SystemInfoIsStableAcrossCalls) {
