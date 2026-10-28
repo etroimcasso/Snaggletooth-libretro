@@ -1,7 +1,7 @@
 // The player's cheat codes: retro_cheat_set and retro_cheat_reset. A Game Genie code patches the
 // cartridge's ROM in the running console and is put back when it is turned off; a Pro Action
-// Replay code and a raw code write their byte before every frame; anything else is refused with
-// a message.
+// Replay code and a raw code write their byte before every frame; codes joined with `+` are one
+// cheat; anything else is refused with a message.
 //
 // What a code does is read back through the work RAM. The suite's cartridge counts frames into
 // it, adding an immediate step byte, one, to a 16-bit count at $7E:0000-0001 in every vertical
@@ -456,7 +456,9 @@ TEST(Cheats, UnreadableCodeIsRefusedWithAMessage) {
       "DDGD-DDDD",
       "7E0010:V",
       "7E00 1055",
-      actionReplay(kEchoedAddress, 0x5Au) + "+" + actionReplay(kEchoedAddress, 0x66u),
+      "+",
+      actionReplay(kEchoedAddress, 0x5Au) + "+",
+      "+" + actionReplay(kEchoedAddress, 0x5Au),
   };
   unsigned index = 0;
   for (const std::string& code : unreadable) {
@@ -466,6 +468,74 @@ TEST(Cheats, UnreadableCodeIsRefusedWithAMessage) {
   }
   core.cheat(index, true, nullptr);
   EXPECT_EQ(seen.messages.size(), unreadable.size());
+  const std::uint8_t stored = core.workRam()[kCountLow];
+  EXPECT_EQ(core.step(), 1u);
+  EXPECT_EQ(core.workRam()[kEcho], stored);
+}
+
+// Codes joined with `+` are one cheat: two Game Genie codes patch both their bytes, turning the
+// cheat off puts both back, and retro_cheat_reset puts both back too.
+TEST(Cheats, JoinedCodesPatchEveryByteAndGoOffTogether) {
+  Frontend seen;
+  Core core(seen);
+  ASSERT_TRUE(core.loaded());
+  ASSERT_TRUE(core.load(cheatCartridge()));
+  core.run();
+  const Core::Frame plain{.step = 1u, .echo = 0xAAu};
+  const Core::Frame cheated{.step = 5u, .echo = 0xBBu};
+  EXPECT_EQ(core.markedRun(), plain);
+  const std::string joined = gameGenie(kStepByte, 0x05u) + "+" + gameGenie(kEchoOperand, 0x11u);
+  core.cheat(0u, true, joined);
+  EXPECT_EQ(core.markedRun(), cheated);
+  EXPECT_EQ(core.markedRun(), cheated);
+  core.cheat(0u, false, joined);
+  EXPECT_EQ(core.markedRun(), plain);
+  core.cheat(0u, true, joined);
+  EXPECT_EQ(core.markedRun(), cheated);
+  core.resetCheats();
+  EXPECT_EQ(core.markedRun(), plain);
+  EXPECT_EQ(core.markedRun(), plain);
+  EXPECT_TRUE(seen.messages.empty());
+}
+
+// A joined cheat may mix the forms, with whitespace around the `+`: a Game Genie code points the
+// echo at $11 and a raw code writes $11 every frame, so the game echoes the raw code's byte.
+TEST(Cheats, JoinedCodesMixTheForms) {
+  Frontend seen;
+  Core core(seen);
+  ASSERT_TRUE(core.loaded());
+  ASSERT_TRUE(core.load(cheatCartridge()));
+  core.run();
+  const std::string joined =
+      " " + gameGenie(kEchoOperand, 0x11u) + " + " + raw(kEchoedAddress + 1u, 0x77u) + " ";
+  core.cheat(0u, true, joined);
+  for (int run = 0; run < 3; ++run) {
+    EXPECT_EQ(core.markedRun(), (Core::Frame{.step = 1u, .echo = 0x77u}));
+  }
+  core.cheat(0u, false, joined);
+  EXPECT_EQ(core.markedRun(), (Core::Frame{.step = 1u, .echo = 0xAAu}));
+  EXPECT_TRUE(seen.messages.empty());
+}
+
+// A joined string with one code that cannot be read, or one at no memory, is refused whole with
+// a message naming the string, and none of its codes takes effect.
+TEST(Cheats, JoinedCodesWithOneBadCodeAreRefusedWhole) {
+  Frontend seen;
+  Core core(seen);
+  ASSERT_TRUE(core.loaded());
+  ASSERT_TRUE(core.load(cheatCartridge()));
+  core.run();
+  const std::vector<std::string> refused{
+      gameGenie(kStepByte, 0x05u) + "+XYZ",
+      gameGenie(kStepByte, 0x05u) + "+" + actionReplay(0x002100u, 0x80u),
+      actionReplay(kEchoedAddress, 0x5Au) + "+" + gameGenie(kEchoedAddress, 0x55u),
+  };
+  unsigned index = 0;
+  for (const std::string& code : refused) {
+    core.cheat(index++, true, code);
+    ASSERT_EQ(seen.messages.size(), index) << code;
+    EXPECT_EQ(seen.messages.back(), refusal(code));
+  }
   const std::uint8_t stored = core.workRam()[kCountLow];
   EXPECT_EQ(core.step(), 1u);
   EXPECT_EQ(core.workRam()[kEcho], stored);
